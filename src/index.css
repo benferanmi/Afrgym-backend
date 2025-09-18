@@ -1,0 +1,156 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Gym Admin Design System - Modern fitness theme with brand colors */
+
+@layer base {
+  :root {
+    /* Gym Brand Colors */
+    --gym-red: 0 85% 56%; /* #f62431 */
+    --gym-yellow: 47 100% 49%; /* #f8bb00 */
+    --gym-dark: 215 28% 17%; /* Dark background */
+    --gym-light: 210 20% 98%; /* Light background */
+    --gym-gray: 215 16% 47%; /* Neutral gray */
+    
+    /* Core Design Tokens */
+    --background: 210 20% 98%;
+    --foreground: 215 28% 17%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 215 28% 17%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 28% 17%;
+
+    --primary: 0 85% 56%; /* Gym Red */
+    --primary-foreground: 210 20% 98%;
+
+    --secondary: 47 100% 49%; /* Gym Yellow */
+    --secondary-foreground: 215 28% 17%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 47 100% 49%; /* Gym Yellow */
+    --accent-foreground: 215 28% 17%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 0 85% 56%; /* Gym Red */
+
+    --radius: 0.75rem;
+
+    /* Sidebar Design */
+    --sidebar-background: 215 28% 17%; /* Dark gym theme */
+    --sidebar-foreground: 210 20% 98%;
+    --sidebar-primary: 0 85% 56%; /* Gym Red */
+    --sidebar-primary-foreground: 210 20% 98%;
+    --sidebar-accent: 215 28% 25%;
+    --sidebar-accent-foreground: 210 20% 98%;
+    --sidebar-border: 215 28% 25%;
+    --sidebar-ring: 0 85% 56%;
+
+    /* Custom gradients */
+    --gradient-gym: linear-gradient(135deg, hsl(var(--gym-red)), hsl(var(--gym-yellow)));
+    --gradient-card: linear-gradient(145deg, hsl(0 0% 100%), hsl(210 20% 98%));
+    --gradient-dark: linear-gradient(145deg, hsl(215 28% 17%), hsl(215 28% 25%));
+    
+    /* Shadows */
+    --shadow-gym: 0 10px 30px -5px hsl(var(--gym-red) / 0.2);
+    --shadow-card: 0 4px 20px -2px hsl(215 28% 17% / 0.1);
+    --shadow-glow: 0 0 40px hsl(var(--gym-red) / 0.3);
+
+    /* Animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  }
+
+  .dark {
+    --background: 215 28% 17%;
+    --foreground: 210 20% 98%;
+
+    --card: 215 28% 20%;
+    --card-foreground: 210 20% 98%;
+
+    --popover: 215 28% 20%;
+    --popover-foreground: 210 20% 98%;
+
+    --primary: 0 85% 56%; /* Keep gym red */
+    --primary-foreground: 210 20% 98%;
+
+    --secondary: 47 100% 49%; /* Keep gym yellow */
+    --secondary-foreground: 215 28% 17%;
+
+    --muted: 215 28% 25%;
+    --muted-foreground: 215 16% 65%;
+
+    --accent: 47 100% 49%;
+    --accent-foreground: 215 28% 17%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 215 28% 25%;
+    --input: 215 28% 25%;
+    --ring: 0 85% 56%;
+    
+    --sidebar-background: 215 28% 12%;
+    --sidebar-foreground: 210 20% 98%;
+    --sidebar-primary: 0 85% 56%;
+    --sidebar-primary-foreground: 210 20% 98%;
+    --sidebar-accent: 215 28% 20%;
+    --sidebar-accent-foreground: 210 20% 98%;
+    --sidebar-border: 215 28% 20%;
+    --sidebar-ring: 0 85% 56%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Custom utility classes */
+  .gradient-gym {
+    background: var(--gradient-gym);
+  }
+  
+  .gradient-card {
+    background: var(--gradient-card);
+  }
+
+  .shadow-gym {
+    box-shadow: var(--shadow-gym);
+  }
+  
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+
+  .transition-smooth {
+    transition: var(--transition-smooth);
+  }
+
+  .transition-bounce {
+    transition: var(--transition-bounce);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
