@@ -420,7 +420,7 @@ export default function Members() {
                     <div className="flex items-center gap-3">
                       <Avatar>
                         <AvatarImage
-                          src={user.avatar_url}
+                          src={user.profile_picture_url || user.avatar_url}
                           alt={user.display_name}
                         />
                         <AvatarFallback>

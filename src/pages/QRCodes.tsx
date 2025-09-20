@@ -264,6 +264,7 @@ export default function QRCodes() {
           <CardContent>
             {lookupResult.user_found ? (
               <div className="space-y-2">
+                
                 <h3 className="font-semibold text-lg">
                   {lookupResult.user.name}
                 </h3>

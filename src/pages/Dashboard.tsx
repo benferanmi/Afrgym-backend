@@ -1,42 +1,55 @@
 import { useEffect, useState } from "react";
-import { Users, UserCheck, QrCode, DollarSign } from "lucide-react";
-import { StatsCard } from "@/components/dashboard/StatsCard";
-import { MembershipDistributionChart } from "@/components/dashboard/MembershipDistributionChart";
 import { Button } from "@/components/ui/button";
-import { Plus, QrCode as QrIcon, Mail } from "lucide-react";
-import { useMembershipStore } from "@/stores/membershipStore";
-import { useUsersStore } from "@/stores/usersStore";
+import { Plus, QrCode as QrIcon, Mail, RefreshCw } from "lucide-react";
 import { AddMemberDialog } from "@/components/members/AddMemberDialog";
-import { QRScanner } from "@/components/QRScanner"; // Import the new QR scanner
+import { QRScanner } from "@/components/QRScanner";
+import { MembershipDistributionChart } from "@/components/dashboard/MembershipDistributionChart";
+import { useMembershipStore } from "@/stores/membershipStore";
+import { useDashboardStore } from "@/stores/dashboardStore";
+import {
+  SummaryStatsGrid,
+  MembershipStatusCard,
+  DailyStatsCard,
+  RecentActivitiesCard,
+  PauseStatsCard,
+  ExpiringMembershipsCard,
+  GrowthTrendsChart,
+} from "@/components/dashboard/DashboardStatsComponents";
 import {
   MembershipBarChart,
   MembershipBarChartComplete,
 } from "@/components/dashboard/MembershipBarChart";
+import { useNavigate } from "react-router-dom";
 
 export default function Dashboard() {
-  const { statistics, getMembershipStatistics } = useMembershipStore();
-  const { qrCodeStatistics, getQRCodeStatistics } = useUsersStore();
   const [isAddMemberDialogOpen, setIsAddMemberDialogOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const { statistics, getMembershipStatistics } = useMembershipStore();
+
+  const navigate = useNavigate()
+
+  // Keep existing membership store for the distribution chart
+  const { statistics: legacyStats } = useMembershipStore();
+
+  // Dashboard store for refresh functionality
+  const { fetchDashboardOverview } = useDashboardStore();
 
   useEffect(() => {
     getMembershipStatistics();
-    getQRCodeStatistics();
-  }, [getMembershipStatistics, getQRCodeStatistics]);
+  }, [getMembershipStatistics]);
 
-  // Refresh data when a new member is added
-  const handleMemberAdded = () => {
-    getMembershipStatistics();
-    getQRCodeStatistics();
-  };
-
-  // Prepare membership distribution data for chart
-  const membershipDistribution =
+  const membershipDistributionData =
     statistics?.by_level?.map((level) => ({
       name: level.level_name,
       value: level.member_count,
       level_id: level.level_id,
     })) || [];
+
+  // Handle member added - refresh both stores
+  const handleMemberAdded = () => {
+    fetchDashboardOverview(); // Refresh dashboard stats
+    // You can also refresh the legacy membership store if needed
+  };
 
   const handleScanQR = () => {
     setIsScannerOpen(true);
@@ -45,30 +58,30 @@ export default function Dashboard() {
   const handleQRScanned = (data) => {
     console.log("QR Code scanned:", data);
 
-    // Here you can process the scanned QR code data
-    // For example:
-    // - Look up member by ID
-    // - Check them in/out
-    // - Navigate to member profile
-    // - Show member information
-
-    // Example: If QR code contains member ID
+    // Process QR code data
     if (data.startsWith("MEMBER_")) {
       const memberId = data.replace("MEMBER_", "");
-      // Navigate to member profile or check them in
       console.log("Processing member check-in for ID:", memberId);
-
-      // You could show a toast notification here
-      // toast.success(`Member ${memberId} checked in successfully!`);
     } else {
       console.log("Unknown QR code format:", data);
-      // toast.error("Invalid QR code format");
     }
   };
 
   const handleScannerClose = () => {
     setIsScannerOpen(false);
   };
+
+  const handleRefreshAll = () => {
+    fetchDashboardOverview();
+  };
+
+  // Prepare membership distribution data for existing chart
+  const membershipDistribution =
+    legacyStats?.by_level?.map((level) => ({
+      name: level.level_name,
+      value: level.member_count,
+      level_id: level.level_id,
+    })) || [];
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -84,6 +97,15 @@ export default function Dashboard() {
           <Button
             variant="outline"
             size="sm"
+            onClick={handleRefreshAll}
+            title="Refresh all dashboard data"
+          >
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setIsAddMemberDialogOpen(true)}
           >
             <Plus className="mr-2 h-4 w-4" />
@@ -93,45 +115,44 @@ export default function Dashboard() {
             <QrIcon className="mr-2 h-4 w-4" />
             Scan QR
           </Button>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={() => navigate("/emails")}>
             <Mail className="mr-2 h-4 w-4" />
             Send Email
           </Button>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatsCard
-          title="Total Members"
-          value={statistics?.total_members?.toLocaleString() || "0"}
-          icon={Users}
-        />
-        <StatsCard
-          title="Active Members"
-          value={statistics?.active_members?.toLocaleString() || "0"}
-          icon={UserCheck}
-        />
-        <StatsCard
-          title="QR Code Coverage"
-          value={`${qrCodeStatistics?.coverage_percentage || 0}%`}
-          icon={QrCode}
-        />
-        <StatsCard
-          title="Total Users"
-          value={qrCodeStatistics?.total_users?.toLocaleString() || "0"}
-          icon={DollarSign}
-        />
+      {/* Main Stats Grid - Loads independently */}
+      <SummaryStatsGrid />
+
+      {/* Secondary Stats Row */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <DailyStatsCard />
+        <MembershipStatusCard />
+        <PauseStatsCard />
       </div>
 
-      {/* Charts */}
+      {/* Alerts and Warnings */}
+      <div className="grid gap-6 md:grid-cols-2">
+        <ExpiringMembershipsCard />
+        <RecentActivitiesCard />
+      </div>
+
+      {/* Growth Trends - Full width */}
+      <GrowthTrendsChart />
+
+      {/* Existing Charts - Keep your current charts */}
       <div className="grid gap-6">
         <MembershipDistributionChart data={membershipDistribution} />
       </div>
 
+      <div className="h-10 grid gap-6 grid-cols-2">
+        <MembershipBarChartComplete data={membershipDistributionData} />
+        <MembershipBarChart data={membershipDistributionData} />
+
+      </div>
+
       <div className="grid gap-6">
-        <MembershipBarChartComplete data={membershipDistribution} />
-        <MembershipBarChart data={membershipDistribution} />
       </div>
 
       {/* Add Member Dialog */}

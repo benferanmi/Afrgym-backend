@@ -70,7 +70,10 @@ export function ViewMemberDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3">
             <Avatar className="h-12 w-12">
-              <AvatarImage src={user.avatar_url} alt={user.display_name} />
+              <AvatarImage
+                src={user.profile_picture_url || user.avatar_url}
+                alt={user.display_name}
+              />
               <AvatarFallback>
                 {getInitials(user.first_name, user.last_name)}
               </AvatarFallback>
@@ -282,7 +285,7 @@ export function ViewMemberDialog({
                       key={index}
                       className="text-sm bg-muted p-3 rounded-lg"
                     >
-                      {note}
+                      {String(note)}
                     </div>
                   ))}
                 </div>

@@ -11,6 +11,7 @@ export interface GymUser {
   last_name: string;
   display_name: string;
   registered: string;
+  profile_picture_url: string;
   membership: {
     status?: string;
     level_id?: string;
@@ -55,6 +56,7 @@ export interface CreateUserPayload {
   level_id?: number;
   start_date?: string;
   end_date?: string;
+  profile_picture_url?: string;
 }
 
 export interface UpdateUserPayload {
@@ -65,6 +67,7 @@ export interface UpdateUserPayload {
   level_id?: number;
   start_date?: string;
   end_date?: string;
+  profile_picture_url?: string;
 }
 
 // NEW: Pause/Unpause related interfaces

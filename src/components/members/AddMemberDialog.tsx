@@ -18,8 +18,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle, Upload, X, User } from "lucide-react";
 import { CreateUserPayload, useUsersStore } from "@/stores/usersStore";
+import { uploadToCloudinary } from "@/config/cloudinary";
 
 interface AddMemberDialogProps {
   open: boolean;
@@ -40,13 +41,13 @@ const membershipPlans = {
       id: "8",
       name: "Weekly (with a trainer)",
       description: "Weekly plan with personal trainer",
-      defaultDays: 7,
+      defaultDays: 6,
     },
     {
       id: "12",
       name: "3x a week / Month",
       description: "3 times per week with personal trainer",
-      defaultDays: 30,
+      defaultDays: 12,
     },
     {
       id: "10",
@@ -72,13 +73,19 @@ const membershipPlans = {
       id: "2",
       name: "Weekly",
       description: "Weekly gym access",
-      defaultDays: 7,
+      defaultDays: 6,
     },
     {
       id: "3",
       name: "Bi weekly",
       description: "Bi-weekly gym access",
-      defaultDays: 14,
+      defaultDays: 12,
+    },
+    {
+      id: "13",
+      name: "3x a week / Month",
+      description: "3 times per week ",
+      defaultDays: 12,
     },
     {
       id: "4",
@@ -142,10 +149,17 @@ export function AddMemberDialog({
     level_id: undefined,
     start_date: getCurrentDate(),
     end_date: "",
+    profile_picture_url: "",
   });
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Image upload states
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>("");
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [imageUploadError, setImageUploadError] = useState<string>("");
 
   const resetForm = () => {
     setFormData({
@@ -156,8 +170,12 @@ export function AddMemberDialog({
       level_id: undefined,
       start_date: getCurrentDate(),
       end_date: "",
+      profile_picture_url: "",
     });
     setFormErrors({});
+    setSelectedFile(null);
+    setImagePreview("");
+    setImageUploadError("");
     clearError();
   };
 
@@ -182,6 +200,11 @@ export function AddMemberDialog({
       errors.last_name = "Last name is required";
     }
 
+    // Check if image is selected but not uploaded
+    if (selectedFile && !formData.profile_picture_url) {
+      errors.image = "Please upload the selected image before submitting";
+    }
+
     // If membership level is selected, validate end date
     if (formData.level_id) {
       if (!formData.end_date) {
@@ -198,6 +221,71 @@ export function AddMemberDialog({
 
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
+  };
+
+  const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      setImageUploadError("Please select an image file");
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setImageUploadError("Image size must be less than 5MB");
+      return;
+    }
+
+    setSelectedFile(file);
+    setImageUploadError("");
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImagePreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+
+    // Clear the uploaded URL if a new file is selected
+    if (formData.profile_picture_url) {
+      handleChange("profile_picture_url", "");
+    }
+  };
+
+  const handleImageUpload = async () => {
+    if (!selectedFile) return;
+
+    setIsUploadingImage(true);
+    setImageUploadError("");
+
+    try {
+      const uploadedUrl = await uploadToCloudinary(selectedFile);
+      handleChange("profile_picture_url", uploadedUrl);
+      console.log("Image uploaded successfully:", uploadedUrl);
+    } catch (error) {
+      console.error("Image upload error:", error);
+      setImageUploadError("Failed to upload image. Please try again.");
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setSelectedFile(null);
+    setImagePreview("");
+    setImageUploadError("");
+    handleChange("profile_picture_url", "");
+
+    // Reset the file input
+    const fileInput = document.getElementById(
+      "profile_picture"
+    ) as HTMLInputElement;
+    if (fileInput) {
+      fileInput.value = "";
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -262,6 +350,9 @@ export function AddMemberDialog({
     ? allPlans.find((plan) => plan.id === formData.level_id?.toString())
     : null;
 
+  // Check if form can be submitted (no pending image upload)
+  const canSubmit = !selectedFile || formData.profile_picture_url;
+
   return (
     <Dialog open={open} onOpenChange={handleDialogChange}>
       <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
@@ -280,6 +371,102 @@ export function AddMemberDialog({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Profile Picture Upload */}
+          <div className="space-y-4 border-b pb-4">
+            <h4 className="font-medium">Profile Picture (Optional)</h4>
+
+            <div className="flex flex-col items-center space-y-4">
+              {/* Image Preview */}
+              <div className="relative">
+                {imagePreview || formData.profile_picture_url ? (
+                  <div className="relative">
+                    <img
+                      src={imagePreview || formData.profile_picture_url}
+                      alt="Profile preview"
+                      className="w-24 h-24 rounded-full object-cover border-2 border-gray-200"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleRemoveImage}
+                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="w-24 h-24 rounded-full bg-gray-100 border-2 border-gray-200 flex items-center justify-center">
+                    <User className="h-8 w-8 text-gray-400" />
+                  </div>
+                )}
+              </div>
+
+              {/* File Input */}
+              <div className="flex flex-col items-center space-y-2">
+                <Label htmlFor="profile_picture" className="cursor-pointer">
+                  <div className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
+                    <Upload className="h-4 w-4" />
+                    <span>Choose Image</span>
+                  </div>
+                </Label>
+                <Input
+                  id="profile_picture"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageSelect}
+                  className="hidden"
+                />
+                <p className="text-xs text-muted-foreground text-center">
+                  Max file size: 5MB. Supported: JPG, PNG, GIF
+                </p>
+              </div>
+
+              {/* Upload Button */}
+              {selectedFile && !formData.profile_picture_url && (
+                <Button
+                  type="button"
+                  onClick={handleImageUpload}
+                  disabled={isUploadingImage}
+                  size="sm"
+                  className="w-full max-w-[200px]"
+                >
+                  {isUploadingImage ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="mr-2 h-4 w-4" />
+                      Upload Image
+                    </>
+                  )}
+                </Button>
+              )}
+
+              {/* Upload Status */}
+              {formData.profile_picture_url && (
+                <p className="text-sm text-green-600 flex items-center">
+                  <span className="mr-1">✓</span>
+                  Image uploaded successfully
+                </p>
+              )}
+
+              {/* Upload Error */}
+              {imageUploadError && (
+                <p className="text-sm text-destructive text-center">
+                  {imageUploadError}
+                </p>
+              )}
+
+              {/* Form Error for Image */}
+              {formErrors.image && (
+                <p className="text-sm text-destructive text-center">
+                  {formErrors.image}
+                </p>
+              )}
+            </div>
+          </div>
+
           {/* Basic Information */}
           <div className="space-y-4">
             <div className="space-y-2">
@@ -455,13 +642,13 @@ export function AddMemberDialog({
               type="button"
               variant="outline"
               onClick={() => handleDialogChange(false)}
-              disabled={isSubmitting}
+              disabled={isSubmitting || isUploadingImage}
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isUploadingImage || !canSubmit}
               className="gradient-gym text-white"
             >
               {isSubmitting ? (
