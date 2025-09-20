@@ -32,101 +32,77 @@ const membershipPlans = {
   withTrainer: [
     {
       id: "9",
-      name: "Daily (with trainer)",
+      name: "Daily (With a Trainer)",
       description: "Daily access with personal trainer",
-      defaultDays: 1, // 1 day
+      defaultDays: 1,
     },
     {
       id: "8",
-      name: "Weekly (with trainer)",
+      name: "Weekly (with a trainer)",
       description: "Weekly plan with personal trainer",
-      defaultDays: 7, // 1 week
-    },
-    {
-      id: "3",
-      name: "Bi-weekly (with trainer)",
-      description: "Bi-weekly plan with personal trainer",
-      defaultDays: 14, // 2 weeks
+      defaultDays: 7,
     },
     {
       id: "12",
-      name: "3 Times a Week (with trainer)",
+      name: "3x a week / Month",
       description: "3 times per week with personal trainer",
-      defaultDays: 21, // 1 month
+      defaultDays: 30,
     },
     {
       id: "10",
-      name: "Monthly (with trainer)",
+      name: "Monthly (With a Trainer)",
       description: "Monthly plan with personal trainer",
-      defaultDays: 30, // 1 month
+      defaultDays: 30,
     },
     {
       id: "11",
-      name: "3 Month (with trainer)",
+      name: "3 Months (With a Trainer)",
       description: "3 Month plan with personal trainer",
-      defaultDays: 90, // 1 month
+      defaultDays: 90,
     },
-    // {
-    //   id: "trainer_6months",
-    //   name: "6 Months (with trainer)",
-    //   description: "6-month plan with personal trainer",
-    //   defaultDays: 180, // 6 months
-    // },
-    // {
-    //   id: "trainer_yearly",
-    //   name: "1 Year (with trainer)",
-    //   description: "Yearly plan with personal trainer",
-    //   defaultDays: 365, // 1 year
-    // },
   ],
   withoutTrainer: [
     {
       id: "1",
       name: "Daily",
       description: "Daily gym access",
-      defaultDays: 1, // 1 day
+      defaultDays: 1,
     },
     {
       id: "2",
       name: "Weekly",
       description: "Weekly gym access",
-      defaultDays: 7, // 1 week
+      defaultDays: 7,
     },
     {
       id: "3",
-      name: "Bi-weekly",
+      name: "Bi weekly",
       description: "Bi-weekly gym access",
-      defaultDays: 14, // 2 weeks
-    },
-    {
-      id: "solo_3times",
-      name: "3 Times a Week",
-      description: "3 times per week gym access",
-      defaultDays: 21, // 3 weeks
+      defaultDays: 14,
     },
     {
       id: "4",
       name: "Monthly",
       description: "Monthly gym access",
-      defaultDays: 30, // 1 month
+      defaultDays: 30,
     },
     {
       id: "5",
-      name: "3 Month",
+      name: "3 Months",
       description: "3 Month gym access",
-      defaultDays: 90, // 3 month
+      defaultDays: 90,
     },
     {
       id: "6",
       name: "6 Months",
       description: "6-month gym access",
-      defaultDays: 180, // 6 months
+      defaultDays: 180,
     },
     {
       id: "7",
       name: "1 Year",
       description: "Yearly gym access",
-      defaultDays: 365, // 1 year
+      defaultDays: 365,
     },
   ],
 };

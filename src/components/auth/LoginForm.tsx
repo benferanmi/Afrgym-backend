@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Dumbbell, Eye, EyeOff } from "lucide-react";
-import { useAuthStore } from "@/stores/authStore";
+import { useAuthStore, useInitializeAuth } from "@/stores/authStore";
 import { useToast } from "@/hooks/use-toast";
 import gymHeroImage from "@/assets/gym-hero.jpg";
 
@@ -19,9 +19,21 @@ export function LoginForm() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const { login, isLoading } = useAuthStore();
+
+  const { login, isLoading, isAuthenticated, token } = useAuthStore();
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  // Initialize auth and get initialization status
+  const { isInitializing, isInitialized } = useInitializeAuth();
+
+  // Redirect to dashboard if already authenticated
+  useEffect(() => {
+    // Only redirect after initialization is complete
+    if (isInitialized && !isInitializing && isAuthenticated && token) {
+      navigate("/", { replace: true });
+    }
+  }, [isAuthenticated, token, isInitialized, isInitializing, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,6 +53,20 @@ export function LoginForm() {
       });
     }
   };
+
+  // Show loading while checking if user is already authenticated or during login
+  if (isInitializing || isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <p className="text-sm text-muted-foreground">
+            {isInitializing ? "Checking authentication..." : "Signing in..."}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex">

@@ -50,7 +50,7 @@ export function AppHeader() {
               <div className="flex flex-col items-start">
                 <span className="text-sm font-medium">{user?.username}</span>
                 <span className="text-xs text-muted-foreground capitalize">
-                  {user?.roles}
+                  {user?.role}
                 </span>
               </div>
             </Button>

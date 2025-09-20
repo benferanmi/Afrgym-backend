@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 const BASE_URL = "https://afrgym.com.ng/wp-json/gym-admin/v1";
 
@@ -8,36 +8,38 @@ export interface User {
   id: number;
   username: string;
   email: string;
-  display_name: string;
-  roles: string[];
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  role: string;
   profileImage?: string;
 }
 
 interface LoginResponse {
   success: boolean;
   token: string;
-  user: {
-    id: number;
+  admin: {
+    id: string;
     username: string;
     email: string;
-    display_name: string;
+    first_name: string;
+    last_name: string;
+    role: string;
+    full_name: string;
   };
   expires_in: number;
 }
 
-interface LogoutResponse {
-  success: boolean;
-  message: string;
-}
-
 interface ValidateResponse {
   valid: boolean;
-  user: {
-    id: number;
+  admin: {
+    id: string;
     username: string;
     email: string;
-    display_name: string;
-    roles: string[];
+    first_name: string;
+    last_name: string;
+    full_name: string;
+    role: string;
   };
 }
 
@@ -46,6 +48,8 @@ interface AuthState {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isValidating: boolean; 
+  isInitialized: boolean; 
   error: string | null;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -53,7 +57,6 @@ interface AuthState {
   clearError: () => void;
 }
 
-// Helper function to check if error is related to invalid token
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const isTokenInvalidError = (error: any): boolean => {
   if (error?.code === "jwt_auth_invalid_token") return true;
@@ -98,6 +101,8 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       isAuthenticated: false,
       isLoading: false,
+      isValidating: false,
+      isInitialized: false,
       error: null,
 
       login: async (username: string, password: string) => {
@@ -111,11 +116,13 @@ export const useAuthStore = create<AuthState>()(
 
           if (response.success) {
             const user: User = {
-              id: response.user.id,
-              username: response.user.username,
-              email: response.user.email,
-              display_name: response.user.display_name,
-              roles: [], // Will be populated when we validate the token
+              id: parseInt(response.admin.id),
+              username: response.admin.username,
+              email: response.admin.email,
+              first_name: response.admin.first_name,
+              last_name: response.admin.last_name,
+              full_name: response.admin.full_name,
+              role: response.admin.role,
             };
 
             set({
@@ -123,11 +130,9 @@ export const useAuthStore = create<AuthState>()(
               token: response.token,
               isAuthenticated: true,
               isLoading: false,
+              isInitialized: true,
               error: null,
             });
-
-            // Validate token to get full user data including roles
-            await get().validateToken();
           } else {
             throw new Error("Login failed");
           }
@@ -140,6 +145,7 @@ export const useAuthStore = create<AuthState>()(
             user: null,
             token: null,
             isAuthenticated: false,
+            isInitialized: true,
           });
           throw new Error(errorMessage);
         }
@@ -165,16 +171,17 @@ export const useAuthStore = create<AuthState>()(
             token: null,
             isAuthenticated: false,
             isLoading: false,
+            isInitialized: true,
             error: null,
           });
         } catch (error) {
-          // Even if logout fails on server, clear local state
           console.warn("Logout API call failed:", error);
           set({
             user: null,
             token: null,
             isAuthenticated: false,
             isLoading: false,
+            isInitialized: true,
             error: null,
           });
         }
@@ -184,9 +191,16 @@ export const useAuthStore = create<AuthState>()(
         const { token } = get();
 
         if (!token) {
-          set({ isAuthenticated: false, user: null });
+          set({
+            isAuthenticated: false,
+            user: null,
+            isInitialized: true,
+            isValidating: false,
+          });
           return false;
         }
+
+        set({ isValidating: true, error: null });
 
         try {
           const response: ValidateResponse = await apiCall("/auth/validate", {
@@ -196,27 +210,32 @@ export const useAuthStore = create<AuthState>()(
             },
           });
 
-          if (response.valid && response.user) {
+          if (response.valid && response.admin) {
             const user: User = {
-              id: response.user.id,
-              username: response.user.username,
-              email: response.user.email,
-              display_name: response.user.display_name,
-              roles: response.user.roles,
+              id: parseInt(response.admin.id),
+              username: response.admin.username,
+              email: response.admin.email,
+              first_name: response.admin.first_name,
+              last_name: response.admin.last_name,
+              full_name: response.admin.full_name,
+              role: response.admin.role,
             };
 
             set({
               user,
               isAuthenticated: true,
+              isValidating: false,
+              isInitialized: true,
               error: null,
             });
             return true;
           } else {
-            // Invalid token response - logout user
             set({
               user: null,
               token: null,
               isAuthenticated: false,
+              isValidating: false,
+              isInitialized: true,
               error: "Session expired. Please login again.",
             });
             return false;
@@ -224,19 +243,21 @@ export const useAuthStore = create<AuthState>()(
         } catch (error) {
           console.warn("Token validation failed:", error);
 
-          // Check if the error is due to invalid token
           if (isTokenInvalidError(error)) {
             console.log("Invalid token detected, logging out user");
             set({
               user: null,
               token: null,
               isAuthenticated: false,
+              isValidating: false,
+              isInitialized: true,
               error: "Your session has expired. Please login again.",
             });
           } else {
-            // For other errors, just set error without logging out
             set({
               error: "Unable to validate session. Please try again.",
+              isValidating: false,
+              isInitialized: true,
             });
           }
           return false;
@@ -254,6 +275,11 @@ export const useAuthStore = create<AuthState>()(
         token: state.token,
         isAuthenticated: state.isAuthenticated,
       }),
+      // Add onRehydrateStorage to handle initialization after hydration
+      onRehydrateStorage: () => (state) => {
+        // Don't set isInitialized here - let the hook handle it
+        console.log("Auth store rehydrated");
+      },
     }
   )
 );
@@ -266,10 +292,8 @@ export const apiCallWithAuth = async (
   try {
     return await apiCall(endpoint, options);
   } catch (error) {
-    // Check if the error is due to invalid token
     if (isTokenInvalidError(error)) {
       console.log("Invalid token detected in API call, triggering logout");
-      // Get the current auth store state and trigger logout
       const { logout } = useAuthStore.getState();
       await logout();
     }
@@ -277,11 +301,33 @@ export const apiCallWithAuth = async (
   }
 };
 
-// Hook to initialize auth state on app load
+// Improved hook to initialize auth state on app load
 export const useInitializeAuth = () => {
-  const validateToken = useAuthStore((state) => state.validateToken);
+  const { validateToken, isInitialized, isValidating, token } = useAuthStore();
+  const [initComplete, setInitComplete] = useState(false);
 
   useEffect(() => {
-    validateToken();
-  }, [validateToken]);
+    const initializeAuth = async () => {
+      // Only run initialization once and if not already initialized
+      if (!isInitialized && !isValidating) {
+        try {
+          await validateToken();
+        } catch (error) {
+          console.warn("Auth initialization failed:", error);
+        } finally {
+          setInitComplete(true);
+        }
+      } else if (isInitialized) {
+        setInitComplete(true);
+      }
+    };
+
+    initializeAuth();
+  }, [validateToken, isInitialized, isValidating]);
+
+  // Return loading state - true if validation is in progress or init not complete
+  return {
+    isInitializing: !initComplete || isValidating,
+    isInitialized,
+  };
 };

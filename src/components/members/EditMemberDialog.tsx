@@ -29,105 +29,82 @@ interface EditMemberDialogProps {
   onSuccess?: () => void;
 }
 
+// FIXED: Updated membership plans with correct IDs from your API response
 const membershipPlans = {
   withTrainer: [
     {
       id: "9",
-      name: "Daily (with trainer)",
+      name: "Daily (With a Trainer)",
       description: "Daily access with personal trainer",
-      defaultDays: 1, // 1 day
+      defaultDays: 1,
     },
     {
       id: "8",
-      name: "Weekly (with trainer)",
+      name: "Weekly (with a trainer)",
       description: "Weekly plan with personal trainer",
-      defaultDays: 7, // 1 week
-    },
-    {
-      id: "3",
-      name: "Bi-weekly (with trainer)",
-      description: "Bi-weekly plan with personal trainer",
-      defaultDays: 14, // 2 weeks
+      defaultDays: 7,
     },
     {
       id: "12",
-      name: "3 Times a Week (with trainer)",
+      name: "3x a week / Month",
       description: "3 times per week with personal trainer",
-      defaultDays: 21, // 1 month
+      defaultDays: 30,
     },
     {
       id: "10",
-      name: "Monthly (with trainer)",
+      name: "Monthly (With a Trainer)",
       description: "Monthly plan with personal trainer",
-      defaultDays: 30, // 1 month
+      defaultDays: 30,
     },
     {
       id: "11",
-      name: "3 Month (with trainer)",
+      name: "3 Months (With a Trainer)",
       description: "3 Month plan with personal trainer",
-      defaultDays: 90, // 1 month
+      defaultDays: 90,
     },
-    // {
-    //   id: "trainer_6months",
-    //   name: "6 Months (with trainer)",
-    //   description: "6-month plan with personal trainer",
-    //   defaultDays: 180, // 6 months
-    // },
-    // {
-    //   id: "trainer_yearly",
-    //   name: "1 Year (with trainer)",
-    //   description: "Yearly plan with personal trainer",
-    //   defaultDays: 365, // 1 year
-    // },
   ],
   withoutTrainer: [
     {
       id: "1",
       name: "Daily",
       description: "Daily gym access",
-      defaultDays: 1, // 1 day
+      defaultDays: 1,
     },
     {
       id: "2",
       name: "Weekly",
       description: "Weekly gym access",
-      defaultDays: 7, // 1 week
+      defaultDays: 7,
     },
     {
       id: "3",
-      name: "Bi-weekly",
+      name: "Bi weekly",
       description: "Bi-weekly gym access",
-      defaultDays: 14, // 2 weeks
-    },
-    {
-      id: "solo_3times",
-      name: "3 Times a Week",
-      description: "3 times per week gym access",
-      defaultDays: 21, // 3 weeks
+      defaultDays: 14,
     },
     {
       id: "4",
       name: "Monthly",
       description: "Monthly gym access",
-      defaultDays: 30, // 1 month
+      defaultDays: 30,
     },
     {
       id: "5",
-      name: "3 Month",
+      name: "3 Months",
       description: "3 Month gym access",
-      defaultDays: 90, // 3 month
+      defaultDays: 90,
     },
     {
       id: "6",
       name: "6 Months",
       description: "6-month gym access",
-      defaultDays: 180, // 6 months
+      defaultDays: 180,
     },
     {
       id: "7",
       name: "1 Year",
       description: "Yearly gym access",
-      defaultDays: 365, // 1 year
+      defaultDays: 365,
     },
   ],
 };
@@ -158,21 +135,24 @@ export function EditMemberDialog({
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Reset form when user changes or dialog opens
+  // FIXED: Better form reset and initialization
   useEffect(() => {
     if (user && open) {
+      // Get today's date as default start date
+      const today = new Date().toISOString().split("T")[0];
+
       setFormData({
-        username: user.username,
-        email: user.email,
-        first_name: user.first_name,
-        last_name: user.last_name,
-        level_id: user.membership.level_id
+        username: user.username || "",
+        email: user.email || "",
+        first_name: user.first_name || "",
+        last_name: user.last_name || "",
+        level_id: user.membership?.level_id
           ? parseInt(user.membership.level_id)
           : undefined,
-        start_date: user.membership.start_date
+        start_date: user.membership?.start_date
           ? user.membership.start_date.split(" ")[0]
-          : "",
-        end_date: user.membership.expiry_date
+          : today, // FIXED: Default to today if no existing membership
+        end_date: user.membership?.expiry_date
           ? user.membership.expiry_date.split(" ")[0]
           : "",
       });
@@ -202,8 +182,8 @@ export function EditMemberDialog({
       errors.last_name = "Last name is required";
     }
 
-    // If membership level is selected, validate dates
-    if (formData.level_id) {
+    // FIXED: Better membership validation
+    if (formData.level_id && formData.level_id > 0) {
       if (!formData.start_date) {
         errors.start_date = "Start date is required when assigning membership";
       }
@@ -231,9 +211,10 @@ export function EditMemberDialog({
     setIsSubmitting(true);
 
     try {
-      // Only send fields that have changed
+      // FIXED: Always send the membership data when level_id is provided
       const updatePayload: UpdateUserPayload = {};
 
+      // Basic fields - only if changed
       if (formData.username !== user.username) {
         updatePayload.username = formData.username;
       }
@@ -247,57 +228,77 @@ export function EditMemberDialog({
         updatePayload.last_name = formData.last_name;
       }
 
-      // Handle membership changes
-      const currentLevelId = user.membership.level_id
-        ? parseInt(user.membership.level_id)
-        : undefined;
-      const currentStartDate = user.membership.start_date
-        ? user.membership.start_date.split(" ")[0]
-        : "";
-      const currentEndDate = user.membership.expiry_date
-        ? user.membership.expiry_date.split(" ")[0]
-        : "";
-
-      if (formData.level_id !== currentLevelId) {
+      // FIXED: Always include membership data when level_id is set
+      // This ensures the backend always processes the membership change
+      if (formData.level_id !== undefined) {
         updatePayload.level_id = formData.level_id;
-      }
-      if (formData.start_date !== currentStartDate) {
-        updatePayload.start_date = formData.start_date;
-      }
-      if (formData.end_date !== currentEndDate) {
-        updatePayload.end_date = formData.end_date;
+
+        // Include dates if we're assigning a membership (not canceling)
+        if (formData.level_id && formData.level_id > 0) {
+          updatePayload.start_date = formData.start_date;
+          updatePayload.end_date = formData.end_date;
+        }
       }
 
-      await updateUser(user.id, updatePayload);
+      // FIXED: Don't check for "no changes" when membership is involved
+      // The backend should handle membership updates properly
+      if (Object.keys(updatePayload).length === 0) {
+        setFormErrors({ general: "No changes detected" });
+        return;
+      }
+
+      console.log("Sending update payload:", updatePayload);
+
+      const updatedUser = await updateUser(user.id, updatePayload);
+
+      console.log("User updated successfully:", updatedUser);
 
       // Close dialog and notify success
       onOpenChange(false);
       onSuccess?.();
-    } catch (error) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
       console.error("Failed to update user:", error);
+
+      // FIXED: Better error handling for different error types
+      let errorMessage = "Failed to update user. Please try again.";
+
+      if (error.message) {
+        errorMessage = error.message;
+      } else if (error.data?.message) {
+        errorMessage = error.data.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+
+      setFormErrors({ general: errorMessage });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Calculate end date based on start date and days to add
+  // FIXED: Better date calculation
   const calculateEndDate = (startDate: string, daysToAdd: number) => {
+    if (!startDate) return "";
+
     const start = new Date(startDate);
     const end = new Date(start);
     end.setDate(start.getDate() + daysToAdd);
     return end.toISOString().split("T")[0];
   };
 
+  // FIXED: Improved membership change handler
   const handleMembershipChange = (value: string) => {
-    if (value === "none") {
-      handleChange("level_id", undefined);
+    if (value === "none" || value === "0") {
+      handleChange("level_id", 0);
       handleChange("end_date", "");
     } else {
-      handleChange("level_id", value);
+      const levelId = parseInt(value);
+      handleChange("level_id", levelId);
 
       // Find the selected plan and calculate default end date
       const selectedPlan = allPlans.find((plan) => plan.id === value);
-      if (selectedPlan) {
+      if (selectedPlan && formData.start_date) {
         const defaultEndDate = calculateEndDate(
           formData.start_date,
           selectedPlan.defaultDays
@@ -307,10 +308,30 @@ export function EditMemberDialog({
     }
   };
 
+  // FIXED: Handle start date changes to recalculate end date
+  const handleStartDateChange = (newStartDate: string) => {
+    handleChange("start_date", newStartDate);
+
+    // Recalculate end date if membership is selected
+    if (formData.level_id && formData.level_id > 0) {
+      const selectedPlan = allPlans.find(
+        (plan) => plan.id === formData.level_id?.toString()
+      );
+      if (selectedPlan) {
+        const newEndDate = calculateEndDate(
+          newStartDate,
+          selectedPlan.defaultDays
+        );
+        handleChange("end_date", newEndDate);
+      }
+    }
+  };
+
   // Get selected plan info for display
-  const selectedPlan = formData.level_id
-    ? allPlans.find((plan) => plan.id === formData.level_id?.toString())
-    : null;
+  const selectedPlan =
+    formData.level_id && formData.level_id > 0
+      ? allPlans.find((plan) => plan.id === formData.level_id?.toString())
+      : null;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleChange = (field: keyof UpdateUserPayload, value: any) => {
@@ -318,6 +339,10 @@ export function EditMemberDialog({
     // Clear error when user starts typing
     if (formErrors[field]) {
       setFormErrors((prev) => ({ ...prev, [field]: "" }));
+    }
+    // Clear general errors
+    if (formErrors.general) {
+      setFormErrors((prev) => ({ ...prev, general: "" }));
     }
   };
 
@@ -334,10 +359,11 @@ export function EditMemberDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {error && (
+        {/* FIXED: Show both general errors and API errors */}
+        {(error || formErrors.general) && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription>{error || formErrors.general}</AlertDescription>
           </Alert>
         )}
 
@@ -348,15 +374,13 @@ export function EditMemberDialog({
               <Label htmlFor="username">Username</Label>
               <Input
                 id="username"
+                readOnly
                 value={formData.username}
-                onChange={(e) => handleChange("username", e.target.value)}
-                placeholder="Enter username"
+                className="bg-muted text-muted-foreground cursor-not-allowed"
               />
-              {formErrors.username && (
-                <p className="text-sm text-destructive">
-                  {formErrors.username}
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground">
+                Username cannot be changed
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -406,18 +430,20 @@ export function EditMemberDialog({
             </div>
           </div>
 
-          {/* membership information */}
+          {/* Membership information */}
           <div className="space-y-4 border-t pt-4">
-            <h4 className="font-medium">Membership Information (Optional)</h4>
+            <h4 className="font-medium">Membership Information</h4>
 
             <div className="space-y-2">
               <Label htmlFor="membership_level">Membership Plan</Label>
               <Select
-                value={formData.level_id?.toString() || "none"}
+                value={
+                  formData.level_id ? formData.level_id.toString() : "none"
+                }
                 onValueChange={handleMembershipChange}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select membership plan (optional)" />
+                  <SelectValue placeholder="Select membership plan" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">No Membership</SelectItem>
@@ -455,7 +481,7 @@ export function EditMemberDialog({
               </Select>
             </div>
 
-            {formData.level_id && (
+            {formData.level_id && formData.level_id > 0 && (
               <>
                 {selectedPlan && (
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
@@ -464,24 +490,25 @@ export function EditMemberDialog({
                     </p>
                     <p className="text-xs text-blue-600 mt-1">
                       Default duration: {selectedPlan.defaultDays} days. You can
-                      modify the end date below if needed.
+                      modify the dates below if needed.
                     </p>
                   </div>
                 )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="start_date">Start Date</Label>
+                    <Label htmlFor="start_date">Start Date *</Label>
                     <Input
                       id="start_date"
                       type="date"
                       value={formData.start_date}
-                      disabled
-                      className="bg-muted text-muted-foreground cursor-not-allowed"
+                      onChange={(e) => handleStartDateChange(e.target.value)}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Membership starts from today
-                    </p>
+                    {formErrors.start_date && (
+                      <p className="text-sm text-destructive">
+                        {formErrors.start_date}
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -503,11 +530,6 @@ export function EditMemberDialog({
                     </p>
                   </div>
                 </div>
-
-                <div className="text-sm text-muted-foreground">
-                  A QR code will be automatically generated for this member when
-                  a membership is assigned.
-                </div>
               </>
             )}
           </div>
@@ -523,10 +545,10 @@ export function EditMemberDialog({
             </Button>
             <Button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || loading}
               className="gradient-gym text-white"
             >
-              {isSubmitting ? (
+              {isSubmitting || loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Updating...
