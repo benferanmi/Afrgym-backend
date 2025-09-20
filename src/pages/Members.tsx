@@ -9,6 +9,9 @@ import {
   Trash2,
   AlertCircle,
   Loader2,
+  Pause,
+  Play,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +23,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -31,6 +35,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
   useUsersStore,
   GymUser,
   getMembershipStatusDisplay,
@@ -40,6 +54,45 @@ import {
 import { EditMemberDialog } from "@/components/members/EditMemberDialog";
 import { AddMemberDialog } from "@/components/members/AddMemberDialog";
 import { ViewMemberDialog } from "@/components/members/ViewMemberDialog";
+
+const BASE_URL = "https://afrgym.com.ng/wp-json/gym-admin/v1";
+
+// Helper function to make API calls with auth
+const apiCall = async (endpoint: string, options: RequestInit = {}) => {
+  const url = `${BASE_URL}${endpoint}`;
+
+  const authState = localStorage.getItem("gym-auth-storage");
+  let token = null;
+
+  if (authState) {
+    try {
+      const parsedAuth = JSON.parse(authState);
+      token = parsedAuth.state?.token;
+    } catch (error) {
+      console.warn("Failed to parse auth token:", error);
+    }
+  }
+
+  const defaultOptions: RequestInit = {
+    headers: {
+      "Content-Type": "application/json",
+      ...(token && { Authorization: `Bearer ${token}` }),
+      ...options.headers,
+    },
+    ...options,
+  };
+
+  const response = await fetch(url, defaultOptions);
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(
+      errorData.message || `HTTP error! status: ${response.status}`
+    );
+  }
+
+  return response.json();
+};
 
 export default function Members() {
   const {
@@ -72,6 +125,19 @@ export default function Members() {
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [viewingUser, setViewingUser] = useState<GymUser | null>(null);
 
+  // State for pause dialog
+  const [pauseDialogOpen, setPauseDialogOpen] = useState(false);
+  const [pausingUser, setPausingUser] = useState<GymUser | null>(null);
+  const [pauseReason, setPauseReason] = useState("");
+
+  // State for unpause confirmation
+  const [unpauseDialogOpen, setUnpauseDialogOpen] = useState(false);
+  const [unpausingUser, setUnpausingUser] = useState<GymUser | null>(null);
+
+  // Loading states for pause/unpause actions
+  const [pauseLoading, setPauseLoading] = useState(false);
+  const [unpauseLoading, setUnpauseLoading] = useState(false);
+
   // Load users on component mount
   useEffect(() => {
     fetchUsers();
@@ -81,6 +147,11 @@ export default function Members() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getMembershipStatusBadge = (user: any) => {
+    // Check if membership is paused
+    if (user.membership.is_paused) {
+      return "bg-yellow-100 text-yellow-800";
+    }
+
     const color = getMembershipStatusColor(user);
     const variants = {
       green: "bg-green-100 text-green-800",
@@ -93,6 +164,13 @@ export default function Members() {
     );
   };
 
+  const getMembershipStatusText = (user: GymUser) => {
+    if (user.membership.is_paused) {
+      return "Paused";
+    }
+    return user.membership.is_active ? "Active" : "Inactive";
+  };
+
   const handleEditUser = (user: GymUser) => {
     setEditingUser(user);
     setEditDialogOpen(true);
@@ -100,7 +178,7 @@ export default function Members() {
 
   const handleViewUser = (user: GymUser) => {
     setViewingUser(user);
-    selectUser(user); // Keep this for compatibility with existing store logic
+    selectUser(user);
     setViewDialogOpen(true);
   };
 
@@ -110,12 +188,10 @@ export default function Members() {
   };
 
   const handleEditSuccess = () => {
-    // Refresh the users list after successful edit
     fetchUsers(currentPage, searchTerm);
   };
 
   const handleAddSuccess = () => {
-    // Refresh the users list after successful add
     fetchUsers(currentPage, searchTerm);
   };
 
@@ -123,7 +199,6 @@ export default function Members() {
     if (window.confirm("Are you sure you want to delete this member?")) {
       try {
         await deleteUser(userId);
-        // Refresh the users list
         fetchUsers(currentPage, searchTerm);
       } catch (error) {
         console.error("Failed to delete user:", error);
@@ -131,9 +206,82 @@ export default function Members() {
     }
   };
 
+  const handlePauseMembership = (user: GymUser) => {
+    setPausingUser(user);
+    setPauseReason("");
+    setPauseDialogOpen(true);
+  };
+
+  const handleUnpauseMembership = (user: GymUser) => {
+    setUnpausingUser(user);
+    setUnpauseDialogOpen(true);
+  };
+
+  const executePauseMembership = async () => {
+    if (!pausingUser) return;
+
+    setPauseLoading(true);
+    try {
+      const response = await apiCall(`/memberships/${pausingUser.id}/pause`, {
+        method: "POST",
+        body: JSON.stringify({ reason: pauseReason }),
+      });
+
+      if (response.success) {
+        // Show success message
+        console.log("Membership paused successfully:", response.message);
+
+        // Close dialog and refresh users
+        setPauseDialogOpen(false);
+        setPausingUser(null);
+        setPauseReason("");
+        fetchUsers(currentPage, searchTerm);
+      }
+    } catch (error) {
+      console.error("Failed to pause membership:", error);
+      alert(
+        "Failed to pause membership: " +
+          (error instanceof Error ? error.message : "Unknown error")
+      );
+    } finally {
+      setPauseLoading(false);
+    }
+  };
+
+  const executeUnpauseMembership = async () => {
+    if (!unpausingUser) return;
+
+    setUnpauseLoading(true);
+    try {
+      const response = await apiCall(
+        `/memberships/${unpausingUser.id}/unpause`,
+        {
+          method: "POST",
+        }
+      );
+
+      if (response.success) {
+        // Show success message
+        console.log("Membership unpaused successfully:", response.message);
+
+        // Close dialog and refresh users
+        setUnpauseDialogOpen(false);
+        setUnpausingUser(null);
+        fetchUsers(currentPage, searchTerm);
+      }
+    } catch (error) {
+      console.error("Failed to unpause membership:", error);
+      alert(
+        "Failed to unpause membership: " +
+          (error instanceof Error ? error.message : "Unknown error")
+      );
+    } finally {
+      setUnpauseLoading(false);
+    }
+  };
+
   const handleSearch = (term: string) => {
     setSearchTerm(term);
-    // The store will automatically trigger API call
   };
 
   const handleFilterChange = (status: string) => {
@@ -142,6 +290,14 @@ export default function Members() {
 
   const getInitials = (firstName: string, lastName: string) => {
     return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+  };
+
+  const canPauseMembership = (user: GymUser) => {
+    return user.membership.is_active && !user.membership.is_paused;
+  };
+
+  const canUnpauseMembership = (user: GymUser) => {
+    return user.membership.is_paused;
   };
 
   if (loading && users.length === 0) {
@@ -218,6 +374,9 @@ export default function Members() {
                 <DropdownMenuItem onClick={() => handleFilterChange("active")}>
                   Active Membership
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleFilterChange("paused")}>
+                  Paused Membership
+                </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => handleFilterChange("inactive")}
                 >
@@ -281,9 +440,20 @@ export default function Members() {
                   </TableCell>
                   <TableCell>
                     <div>
-                      <Badge variant="outline" className="mb-1">
-                        {user.membership.level_name}
-                      </Badge>
+                      <div className="flex items-center gap-2 mb-1">
+                        <Badge variant="outline">
+                          {user.membership.level_name}
+                        </Badge>
+                        {user.membership.is_paused && (
+                          <Badge
+                            variant="outline"
+                            className="bg-yellow-100 text-yellow-800"
+                          >
+                            <Pause className="h-3 w-3 mr-1" />
+                            Paused
+                          </Badge>
+                        )}
+                      </div>
                       {user.membership.expiry_date && (
                         <div className="text-xs text-muted-foreground">
                           Expires: {formatDate(user.membership.expiry_date)}
@@ -298,7 +468,7 @@ export default function Members() {
                   </TableCell>
                   <TableCell>
                     <Badge className={getMembershipStatusBadge(user)}>
-                      {user.membership.is_active ? "Active" : "Inactive"}
+                      {getMembershipStatusText(user)}
                     </Badge>
                   </TableCell>
                   <TableCell>
@@ -348,13 +518,49 @@ export default function Members() {
                             View QR Code
                           </DropdownMenuItem>
                         )}
-                        {/* ?   <DropdownMenuItem
+                        <DropdownMenuSeparator />
+
+                        {/* Pause/Unpause Actions */}
+                        {canPauseMembership(user) && (
+                          <DropdownMenuItem
+                            onClick={() => handlePauseMembership(user)}
+                            className="text-orange-600"
+                          >
+                            <Pause className="mr-2 h-4 w-4" />
+                            Pause Membership
+                          </DropdownMenuItem>
+                        )}
+
+                        {canUnpauseMembership(user) && (
+                          <DropdownMenuItem
+                            onClick={() => handleUnpauseMembership(user)}
+                            className="text-green-600"
+                          >
+                            <Play className="mr-2 h-4 w-4" />
+                            Resume Membership
+                          </DropdownMenuItem>
+                        )}
+
+                        {user.membership.is_paused && (
+                          <DropdownMenuItem
+                            onClick={() => handleViewUser(user)}
+                            className="text-blue-600"
+                          >
+                            <Clock className="mr-2 h-4 w-4" />
+                            View Pause Details
+                          </DropdownMenuItem>
+                        )}
+
+                        {/* Uncomment if delete functionality is needed
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
                           className="text-destructive"
                           onClick={() => handleDeleteUser(user.id)}
                         >
                           <Trash2 className="mr-2 h-4 w-4" />
                           Delete Member
-                        </DropdownMenuItem> */}
+                        </DropdownMenuItem>
+                        */}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
@@ -402,6 +608,153 @@ export default function Members() {
           )}
         </CardContent>
       </Card>
+
+      {/* Pause Membership Dialog */}
+      <Dialog open={pauseDialogOpen} onOpenChange={setPauseDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Pause Membership</DialogTitle>
+            <DialogDescription>
+              Pause {pausingUser?.display_name}'s membership. The membership
+              will be extended by the number of days it remains paused.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="pause-reason">Reason for Pause (Optional)</Label>
+              <Textarea
+                id="pause-reason"
+                placeholder="Enter reason for pausing membership..."
+                value={pauseReason}
+                onChange={(e) => setPauseReason(e.target.value)}
+                rows={3}
+              />
+            </div>
+
+            {pausingUser && (
+              <div className="bg-muted p-3 rounded-lg">
+                <h4 className="font-medium mb-2">
+                  Current Membership Details:
+                </h4>
+                <div className="text-sm space-y-1">
+                  <div>
+                    Plan:{" "}
+                    <span className="font-medium">
+                      {pausingUser.membership.level_name}
+                    </span>
+                  </div>
+                  {pausingUser.membership.expiry_date && (
+                    <div>
+                      Expires:{" "}
+                      <span className="font-medium">
+                        {formatDate(pausingUser.membership.expiry_date)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="text-muted-foreground text-xs mt-2">
+                    When unpaused, the expiry date will be extended by the
+                    number of days the membership was paused.
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPauseDialogOpen(false)}
+              disabled={pauseLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={executePauseMembership}
+              disabled={pauseLoading}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              {pauseLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Pausing...
+                </>
+              ) : (
+                <>
+                  <Pause className="mr-2 h-4 w-4" />
+                  Pause Membership
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Unpause Membership Dialog */}
+      <Dialog open={unpauseDialogOpen} onOpenChange={setUnpauseDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Resume Membership</DialogTitle>
+            <DialogDescription>
+              Resume {unpausingUser?.display_name}'s paused membership. The
+              expiry date will be automatically extended.
+            </DialogDescription>
+          </DialogHeader>
+
+          {unpausingUser && (
+            <div className="bg-muted p-3 rounded-lg">
+              <h4 className="font-medium mb-2">Membership Details:</h4>
+              <div className="text-sm space-y-1">
+                <div>
+                  Plan:{" "}
+                  <span className="font-medium">
+                    {unpausingUser.membership.level_name}
+                  </span>
+                </div>
+                {unpausingUser.membership.expiry_date && (
+                  <div>
+                    Current Expiry:{" "}
+                    <span className="font-medium">
+                      {formatDate(unpausingUser.membership.expiry_date)}
+                    </span>
+                  </div>
+                )}
+                <div className="text-green-600 text-xs mt-2">
+                  The expiry date will be extended by the number of days the
+                  membership was paused.
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setUnpauseDialogOpen(false)}
+              disabled={unpauseLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={executeUnpauseMembership}
+              disabled={unpauseLoading}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {unpauseLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Resuming...
+                </>
+              ) : (
+                <>
+                  <Play className="mr-2 h-4 w-4" />
+                  Resume Membership
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* View Member Dialog */}
       <ViewMemberDialog

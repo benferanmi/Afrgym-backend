@@ -37,6 +37,9 @@ import {
   Filter,
   Download,
   RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+  Search,
 } from "lucide-react";
 import { useUsersStore } from "@/stores/usersStore";
 import {
@@ -48,7 +51,13 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 
-type RecipientType = "all" | "active" | "expiring" | "membership" | "specific";
+type RecipientType =
+  | "all"
+  | "active"
+  | "inactive"
+  | "expiring"
+  | "membership"
+  | "specific";
 
 const EmailModes = {
   TEMPLATE_ONLY: "template_only",
@@ -58,14 +67,13 @@ const EmailModes = {
 
 type EmailMode = (typeof EmailModes)[keyof typeof EmailModes];
 
-// Mock membership levels interface since it's not in the store
 interface MembershipLevel {
   id: number;
   name: string;
 }
 
 export default function EmailCenter() {
-  const { users, fetchUsers } = useUsersStore();
+  const { users, fetchUsers, loading: usersLoading } = useUsersStore();
   const {
     templates,
     templatesCategories,
@@ -105,6 +113,10 @@ export default function EmailCenter() {
     ).values()
   );
 
+  // All users state (for pagination in specific member selection)
+  const [allUsers, setAllUsers] = useState<typeof users>([]);
+  const [loadingAllUsers, setLoadingAllUsers] = useState(false);
+
   // Form state
   const [selectedTemplate, setSelectedTemplate] =
     useState<StoreEmailTemplate | null>(null);
@@ -118,6 +130,12 @@ export default function EmailCenter() {
     []
   );
 
+  // Pagination for specific member selection
+  const [specificMemberPage, setSpecificMemberPage] = useState(1);
+  const [specificMemberSearch, setSpecificMemberSearch] = useState("");
+  const [specificMemberTotal, setSpecificMemberTotal] = useState(0);
+  const [specificMemberTotalPages, setSpecificMemberTotalPages] = useState(1);
+
   // UI state
   const [emailMode, setEmailMode] = useState<EmailMode>(
     EmailModes.TEMPLATE_ONLY
@@ -130,6 +148,25 @@ export default function EmailCenter() {
     content: string;
   } | null>(null);
   const [activeTab, setActiveTab] = useState("compose");
+
+  // Load all users for specific member selection with pagination
+  const loadAllUsersForSelection = async (
+    page: number = 1,
+    search: string = ""
+  ) => {
+    setLoadingAllUsers(true);
+    try {
+      await fetchUsers(page, search, 100); // 100 per page for better selection
+      setAllUsers(users);
+      setSpecificMemberTotal(users.length);
+      setSpecificMemberTotalPages(Math.ceil(users.length / 20));
+    } catch (error) {
+      console.error("Failed to load users for selection:", error);
+      toast.error("Failed to load users");
+    } finally {
+      setLoadingAllUsers(false);
+    }
+  };
 
   // Initialize data
   useEffect(() => {
@@ -169,9 +206,28 @@ export default function EmailCenter() {
 
   useEffect(() => {
     if (users.length === 0) {
-      fetchUsers();
+      fetchUsers(1, "", 100); // Load more users initially
     }
   }, [fetchUsers, users.length]);
+
+  // Load all users when specific recipient type is selected
+  useEffect(() => {
+    if (selectedRecipients === "specific" && allUsers.length === 0) {
+      loadAllUsersForSelection();
+    }
+  }, [selectedRecipients]);
+
+  // Handle search in specific member selection
+  useEffect(() => {
+    if (selectedRecipients === "specific") {
+      const debounceTimer = setTimeout(() => {
+        loadAllUsersForSelection(1, specificMemberSearch);
+        setSpecificMemberPage(1);
+      }, 300);
+
+      return () => clearTimeout(debounceTimer);
+    }
+  }, [specificMemberSearch, selectedRecipients]);
 
   // Determine email mode based on form state
   useEffect(() => {
@@ -221,17 +277,34 @@ export default function EmailCenter() {
     setSelectedRecipients("all");
     setSpecificUserId("");
     setSelectedMembershipIds([]);
+    setSpecificMemberSearch("");
+    setSpecificMemberPage(1);
   };
 
   const getRecipientUsers = () => {
+    let targetUsers = users;
+
+    // For "all" recipients, ensure we have all users loaded
+    if (selectedRecipients === "all" && users.length < 100) {
+      targetUsers = users; // Use what we have for now
+    }
+
     switch (selectedRecipients) {
       case "all":
-        return users;
+        return targetUsers;
       case "active":
-        return users.filter((u) => u.membership.is_active);
+        return targetUsers.filter(
+          (u) => u.membership.is_active && !u.membership.is_paused
+        );
+      case "inactive":
+        return targetUsers.filter(
+          (u) =>
+            !u.membership.is_active || u.membership.status === "no_membership"
+        );
       case "expiring":
-        return users.filter((u) => {
-          if (!u.membership.expiry_date) return false;
+        return targetUsers.filter((u) => {
+          if (!u.membership.expiry_date || !u.membership.is_active)
+            return false;
           const expiryDate = new Date(u.membership.expiry_date);
           const today = new Date();
           const diffTime = expiryDate.getTime() - today.getTime();
@@ -240,13 +313,15 @@ export default function EmailCenter() {
         });
       case "membership":
         if (selectedMembershipIds.length === 0) return [];
-        return users.filter((u) =>
+        return targetUsers.filter((u) =>
           selectedMembershipIds.includes(
             u.membership.level_id?.toString() || ""
           )
         );
       case "specific": {
-        const user = users.find((u) => u.id.toString() === specificUserId);
+        const user = (allUsers.length > 0 ? allUsers : targetUsers).find(
+          (u) => u.id.toString() === specificUserId
+        );
         return user ? [user] : [];
       }
       default:
@@ -254,7 +329,16 @@ export default function EmailCenter() {
     }
   };
 
-  const getRecipientCount = () => getRecipientUsers().length;
+  const getRecipientCount = () => {
+    const recipients = getRecipientUsers();
+
+    // For "all" recipients, show actual count from API if available
+    if (selectedRecipients === "all") {
+      return recipients.length;
+    }
+
+    return recipients.length;
+  };
 
   const validateForm = () => {
     if (emailMode === EmailModes.CUSTOM_ONLY && !emailSubject.trim()) {
@@ -396,6 +480,11 @@ export default function EmailCenter() {
     }
   };
 
+  const handleSpecificMemberPageChange = (newPage: number) => {
+    setSpecificMemberPage(newPage);
+    loadAllUsersForSelection(newPage, specificMemberSearch);
+  };
+
   const getTemplateArray = () => {
     if (!templates) return [];
     return Object.entries(templates).map(([key, template]) => ({
@@ -452,6 +541,24 @@ export default function EmailCenter() {
       default:
         return <Clock className="h-4 w-4 text-gray-500" />;
     }
+  };
+
+  // Get filtered users for specific member selection
+  const getFilteredUsersForSelection = () => {
+    const targetUsers = allUsers.length > 0 ? allUsers : users;
+
+    if (!specificMemberSearch.trim()) {
+      return targetUsers;
+    }
+
+    const searchTerm = specificMemberSearch.toLowerCase();
+    return targetUsers.filter(
+      (user) =>
+        user.display_name.toLowerCase().includes(searchTerm) ||
+        user.email.toLowerCase().includes(searchTerm) ||
+        user.first_name.toLowerCase().includes(searchTerm) ||
+        user.last_name.toLowerCase().includes(searchTerm)
+    );
   };
 
   if (loading && !templates) {
@@ -839,6 +946,9 @@ export default function EmailCenter() {
                       <SelectContent>
                         <SelectItem value="all">All Members</SelectItem>
                         <SelectItem value="active">Active Members</SelectItem>
+                        <SelectItem value="inactive">
+                          Inactive Members
+                        </SelectItem>
                         <SelectItem value="expiring">
                           Expiring Soon (7 days)
                         </SelectItem>
@@ -898,30 +1008,142 @@ export default function EmailCenter() {
                     </div>
                   )}
 
-                  {/* Specific User Selection */}
+                  {/* Specific User Selection with Search and Pagination */}
                   {selectedRecipients === "specific" && (
-                    <div>
+                    <div className="space-y-3">
                       <label className="text-sm font-medium mb-2 block">
                         Select Member
                       </label>
-                      <Select
-                        value={specificUserId}
-                        onValueChange={setSpecificUserId}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Choose a member" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {users.map((user) => (
-                            <SelectItem
-                              key={user.id}
-                              value={user.id.toString()}
+
+                      {/* Search Input */}
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Search members..."
+                          value={specificMemberSearch}
+                          onChange={(e) =>
+                            setSpecificMemberSearch(e.target.value)
+                          }
+                          className="pl-9"
+                        />
+                      </div>
+
+                      {/* Loading State */}
+                      {loadingAllUsers && (
+                        <div className="flex items-center justify-center py-4">
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          <span className="text-sm text-muted-foreground">
+                            Loading members...
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Member Selection */}
+                      <div className="border rounded-md max-h-64 overflow-y-auto">
+                        {getFilteredUsersForSelection().map((user) => (
+                          <div
+                            key={user.id}
+                            className={`flex items-center space-x-3 p-3 hover:bg-muted/50 cursor-pointer border-b last:border-b-0 ${
+                              specificUserId === user.id.toString()
+                                ? "bg-muted"
+                                : ""
+                            }`}
+                            onClick={() =>
+                              setSpecificUserId(user.id.toString())
+                            }
+                          >
+                            <input
+                              type="radio"
+                              name="specific-member"
+                              checked={specificUserId === user.id.toString()}
+                              onChange={() =>
+                                setSpecificUserId(user.id.toString())
+                              }
+                              className="rounded"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">
+                                {user.first_name} {user.last_name}
+                              </p>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {user.email}
+                              </p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <Badge variant="outline" className="text-xs">
+                                  {user.membership.level_name ||
+                                    "No Membership"}
+                                </Badge>
+                                {user.membership.is_active && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="text-xs"
+                                  >
+                                    Active
+                                  </Badge>
+                                )}
+                                {user.membership.is_paused && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="text-xs"
+                                  >
+                                    Paused
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+
+                        {getFilteredUsersForSelection().length === 0 &&
+                          !loadingAllUsers && (
+                            <div className="p-4 text-center text-sm text-muted-foreground">
+                              {specificMemberSearch
+                                ? "No members found matching your search."
+                                : "No members available."}
+                            </div>
+                          )}
+                      </div>
+
+                      {/* Pagination for Specific Member Selection */}
+                      {specificMemberTotalPages > 1 && (
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-muted-foreground">
+                            Page {specificMemberPage} of{" "}
+                            {specificMemberTotalPages}
+                          </p>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                handleSpecificMemberPageChange(
+                                  specificMemberPage - 1
+                                )
+                              }
+                              disabled={
+                                specificMemberPage <= 1 || loadingAllUsers
+                              }
                             >
-                              {user.first_name} {user.last_name} ({user.email})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                              <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                handleSpecificMemberPageChange(
+                                  specificMemberPage + 1
+                                )
+                              }
+                              disabled={
+                                specificMemberPage >=
+                                  specificMemberTotalPages || loadingAllUsers
+                              }
+                            >
+                              <ChevronRight className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -934,6 +1156,12 @@ export default function EmailCenter() {
                         {getRecipientCount() === 1 ? "person" : "people"}
                       </Badge>
                     </div>
+                    {selectedRecipients === "all" && users.length >= 20 && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Note: Showing loaded members. All members will be
+                        included in the actual email send.
+                      </p>
+                    )}
                   </div>
 
                   {/* Send Button */}

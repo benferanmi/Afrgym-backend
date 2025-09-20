@@ -19,6 +19,23 @@ export interface GymUser {
     expiry_date: string | null;
     start_date: string | null;
     is_active: boolean;
+    // NEW: Pause-related fields
+    is_paused?: boolean;
+    pause_info?: {
+      pause_date: string;
+      days_paused_so_far: number;
+      total_paused_days: number;
+      remaining_days: number;
+      original_end_date: string;
+      current_end_date: string;
+      pause_history: Array<{
+        action: "paused" | "unpaused";
+        date: string;
+        admin_id: number;
+        days_paused?: number;
+        reason?: string;
+      }>;
+    };
   };
   avatar_url: string;
   qr_code: {
@@ -48,6 +65,53 @@ export interface UpdateUserPayload {
   level_id?: number;
   start_date?: string;
   end_date?: string;
+}
+
+// NEW: Pause/Unpause related interfaces
+export interface PauseMembershipPayload {
+  reason?: string;
+}
+
+export interface PauseMembershipResponse {
+  success: boolean;
+  message: string;
+  user_id: number;
+  pause_date: string;
+  remaining_days: number;
+  original_end_date: string;
+  paused_status: boolean;
+  reason?: string;
+}
+
+export interface UnpauseMembershipResponse {
+  success: boolean;
+  message: string;
+  user_id: number;
+  unpause_date: string;
+  days_paused: number;
+  original_end_date: string;
+  new_end_date: string;
+  paused_status: boolean;
+  total_paused_days: number;
+}
+
+export interface PauseStatusResponse {
+  success: boolean;
+  user_id: number;
+  is_paused: boolean;
+  pause_date: string | null;
+  days_paused_so_far: number;
+  total_paused_days: number;
+  remaining_days: number | null;
+  original_end_date: string | null;
+  current_end_date: string | null;
+  pause_history: Array<{
+    action: "paused" | "unpaused";
+    date: string;
+    admin_id: number;
+    days_paused?: number;
+    reason?: string;
+  }>;
 }
 
 // QR Code related interfaces
@@ -150,7 +214,7 @@ interface UsersState {
   qrCodeLoading: boolean;
 
   // Actions
-  fetchUsers: (page?: number, search?: string) => Promise<void>;
+  fetchUsers: (page?: number, search?: string, perPage?: number) => Promise<void>;
   fetchSingleUser: (id: number) => Promise<GymUser>;
   addUser: (user: CreateUserPayload) => Promise<GymUser>;
   updateUser: (id: number, user: UpdateUserPayload) => Promise<GymUser>;
@@ -161,6 +225,14 @@ interface UsersState {
   setCurrentPage: (page: number) => void;
   getFilteredUsers: () => GymUser[];
   clearError: () => void;
+
+  // NEW: Pause/Unpause Actions
+  pauseMembership: (
+    userId: number,
+    reason?: string
+  ) => Promise<PauseMembershipResponse>;
+  unpauseMembership: (userId: number) => Promise<UnpauseMembershipResponse>;
+  getPauseStatus: (userId: number) => Promise<PauseStatusResponse>;
 
   // QR Code Actions
   getUserQRCode: (id: number) => Promise<QRCodeData>;
@@ -274,13 +346,13 @@ export const useUsersStore = create<UsersState>((set, get) => ({
   qrCodeStatistics: null,
   qrCodeLoading: false,
 
-  fetchUsers: async (page = 1, search = "") => {
+  fetchUsers: async (page = 1, search = "", perPage = 20) => {
     set({ loading: true, error: null });
 
     try {
       const queryParams = new URLSearchParams();
       queryParams.append("page", page.toString());
-      queryParams.append("per_page", "20");
+      queryParams.append("per_page", perPage.toString());
 
       if (search) {
         queryParams.append("search", search);
@@ -468,8 +540,13 @@ export const useUsersStore = create<UsersState>((set, get) => ({
 
       const matchesFilter =
         filterStatus === "all" ||
-        (filterStatus === "active" && user.membership.is_active) ||
-        (filterStatus === "inactive" && !user.membership.is_active) ||
+        (filterStatus === "active" &&
+          user.membership.is_active &&
+          !user.membership.is_paused) ||
+        (filterStatus === "paused" && user.membership.is_paused) ||
+        (filterStatus === "inactive" &&
+          !user.membership.is_active &&
+          !user.membership.is_paused) ||
         (filterStatus === "no_membership" &&
           user.membership.status === "no_membership");
 
@@ -478,6 +555,165 @@ export const useUsersStore = create<UsersState>((set, get) => ({
   },
 
   clearError: () => set({ error: null }),
+
+  // NEW: Pause/Unpause Actions
+  pauseMembership: async (userId: number, reason?: string) => {
+    set({ loading: true, error: null });
+
+    try {
+      const payload: PauseMembershipPayload = {};
+      if (reason) {
+        payload.reason = reason;
+      }
+
+      const response: PauseMembershipResponse = await apiCall(
+        `/memberships/${userId}/pause`,
+        {
+          method: "POST",
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (response.success) {
+        // Update the user in the users array with pause status
+        const { users, selectedUser } = get();
+        const updatedUsers = users.map((user) => {
+          if (user.id === userId) {
+            return {
+              ...user,
+              membership: {
+                ...user.membership,
+                is_paused: true,
+              },
+            };
+          }
+          return user;
+        });
+
+        // Update selected user if it's the same user
+        const updatedSelectedUser =
+          selectedUser?.id === userId
+            ? {
+                ...selectedUser,
+                membership: {
+                  ...selectedUser.membership,
+                  is_paused: true,
+                },
+              }
+            : selectedUser;
+
+        set({
+          users: updatedUsers,
+          selectedUser: updatedSelectedUser,
+          loading: false,
+          error: null,
+        });
+
+        return response;
+      } else {
+        throw new Error("Failed to pause membership");
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to pause membership";
+      set({ loading: false, error: errorMessage });
+
+      if (!isTokenInvalidError(error)) {
+        throw new Error(errorMessage);
+      }
+      throw new Error(errorMessage);
+    }
+  },
+
+  unpauseMembership: async (userId: number) => {
+    set({ loading: true, error: null });
+
+    try {
+      const response: UnpauseMembershipResponse = await apiCall(
+        `/memberships/${userId}/unpause`,
+        {
+          method: "POST",
+        }
+      );
+
+      if (response.success) {
+        // Update the user in the users array with unpause status
+        const { users, selectedUser } = get();
+        const updatedUsers = users.map((user) => {
+          if (user.id === userId) {
+            return {
+              ...user,
+              membership: {
+                ...user.membership,
+                is_paused: false,
+                expiry_date: response.new_end_date,
+              },
+            };
+          }
+          return user;
+        });
+
+        // Update selected user if it's the same user
+        const updatedSelectedUser =
+          selectedUser?.id === userId
+            ? {
+                ...selectedUser,
+                membership: {
+                  ...selectedUser.membership,
+                  is_paused: false,
+                  expiry_date: response.new_end_date,
+                },
+              }
+            : selectedUser;
+
+        set({
+          users: updatedUsers,
+          selectedUser: updatedSelectedUser,
+          loading: false,
+          error: null,
+        });
+
+        return response;
+      } else {
+        throw new Error("Failed to unpause membership");
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to unpause membership";
+      set({ loading: false, error: errorMessage });
+
+      if (!isTokenInvalidError(error)) {
+        throw new Error(errorMessage);
+      }
+      throw new Error(errorMessage);
+    }
+  },
+
+  getPauseStatus: async (userId: number) => {
+    set({ loading: true, error: null });
+
+    try {
+      const response: PauseStatusResponse = await apiCall(
+        `/memberships/${userId}/pause-status`
+      );
+
+      if (response.success) {
+        set({ loading: false, error: null });
+        return response;
+      } else {
+        throw new Error("Failed to get pause status");
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to get pause status";
+      set({ loading: false, error: errorMessage });
+
+      if (!isTokenInvalidError(error)) {
+        throw new Error(errorMessage);
+      }
+      throw new Error(errorMessage);
+    }
+  },
 
   // QR Code Actions
   getUserQRCode: async (id: number) => {
@@ -657,6 +893,10 @@ export const useUsersStore = create<UsersState>((set, get) => ({
 
 // Utility functions for easier usage
 export const getMembershipStatusDisplay = (user: GymUser): string => {
+  if (user.membership.is_paused) {
+    return "Paused";
+  }
+
   if (
     !user.membership.is_active ||
     user.membership.status === "no_membership"
@@ -667,6 +907,11 @@ export const getMembershipStatusDisplay = (user: GymUser): string => {
 };
 
 export const getMembershipStatusColor = (user: GymUser): string => {
+  // Paused memberships get yellow color
+  if (user.membership.is_paused) {
+    return "yellow";
+  }
+
   if (
     !user.membership.is_active ||
     user.membership.status === "no_membership"
@@ -691,6 +936,48 @@ export const getMembershipStatusColor = (user: GymUser): string => {
 export const formatDate = (dateString: string | null): string => {
   if (!dateString) return "N/A";
   return new Date(dateString).toLocaleDateString();
+};
+
+// NEW: Pause-related utility functions
+export const isPaused = (user: GymUser): boolean => {
+  return user.membership.is_paused === true;
+};
+
+export const canPauseMembership = (user: GymUser): boolean => {
+  return user.membership.is_active && !user.membership.is_paused;
+};
+
+export const canUnpauseMembership = (user: GymUser): boolean => {
+  return user.membership.is_paused === true;
+};
+
+export const getPauseStatusText = (user: GymUser): string => {
+  if (user.membership.is_paused) {
+    return "Membership is currently paused";
+  }
+
+  if (user.membership.is_active) {
+    return "Membership is active";
+  }
+
+  return "Membership is inactive";
+};
+
+export const formatPauseHistory = (
+  pauseHistory: Array<{
+    action: "paused" | "unpaused";
+    date: string;
+    admin_id: number;
+    days_paused?: number;
+    reason?: string;
+  }>
+) => {
+  return pauseHistory.map((entry) => ({
+    ...entry,
+    formattedDate: formatDate(entry.date),
+    actionText: entry.action === "paused" ? "Paused" : "Resumed",
+    daysText: entry.days_paused ? `${entry.days_paused} days` : undefined,
+  }));
 };
 
 // QR Code utility functions
