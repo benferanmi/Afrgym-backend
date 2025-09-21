@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,8 +19,30 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, AlertCircle, Upload, X, User } from "lucide-react";
-import { GymUser, UpdateUserPayload, useUsersStore } from "@/stores/usersStore";
+import {
+  Loader2,
+  AlertCircle,
+  Upload,
+  X,
+  User,
+  UserCheck,
+  TrendingUp,
+  Calendar,
+} from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import {
+  GymUser,
+  UpdateUserPayload,
+  useUsersStore,
+  // Import visit-based utilities
+  isVisitBased,
+  canCheckin,
+  hasCheckedInToday,
+  getVisitStatusText,
+  formatVisitInfo,
+} from "@/stores/usersStore";
 import { uploadToCloudinary } from "@/config/cloudinary";
 
 interface EditMemberDialogProps {
@@ -29,7 +52,7 @@ interface EditMemberDialogProps {
   onSuccess?: () => void;
 }
 
-// FIXED: Updated membership plans with correct IDs from your API response
+// Updated membership plans with visit-based indicators
 const membershipPlans = {
   withTrainer: [
     {
@@ -37,30 +60,36 @@ const membershipPlans = {
       name: "Daily (With a Trainer)",
       description: "Daily access with personal trainer",
       defaultDays: 1,
+      isVisitBased: false,
     },
     {
       id: "8",
       name: "Weekly (with a trainer)",
       description: "Weekly plan with personal trainer",
       defaultDays: 6,
+      isVisitBased: false,
     },
     {
       id: "12",
-      name: "3x a week / Month",
-      description: "3 times per week with personal trainer",
-      defaultDays: 12,
+      name: "3x a week / Month (With Trainer)",
+      description: "Visit-based: 12 visits per month with trainer",
+      defaultDays: 30,
+      isVisitBased: true,
+      monthlyVisits: 12,
     },
     {
       id: "10",
       name: "Monthly (With a Trainer)",
       description: "Monthly plan with personal trainer",
       defaultDays: 30,
+      isVisitBased: false,
     },
     {
       id: "11",
       name: "3 Months (With a Trainer)",
       description: "3 Month plan with personal trainer",
       defaultDays: 90,
+      isVisitBased: false,
     },
   ],
   withoutTrainer: [
@@ -69,48 +98,57 @@ const membershipPlans = {
       name: "Daily",
       description: "Daily gym access",
       defaultDays: 1,
+      isVisitBased: false,
     },
     {
       id: "2",
       name: "Weekly",
       description: "Weekly gym access",
       defaultDays: 6,
+      isVisitBased: false,
     },
     {
       id: "3",
       name: "Bi weekly",
       description: "Bi-weekly gym access",
       defaultDays: 12,
+      isVisitBased: false,
     },
     {
       id: "13",
       name: "3x a week / Month",
-      description: "3 times per week ",
-      defaultDays: 12,
+      description: "Visit-based: 12 visits per month",
+      defaultDays: 30,
+      isVisitBased: true,
+      monthlyVisits: 12,
     },
     {
       id: "4",
       name: "Monthly",
       description: "Monthly gym access",
       defaultDays: 30,
+      isVisitBased: false,
     },
     {
       id: "5",
       name: "3 Months",
       description: "3 Month gym access",
       defaultDays: 90,
+      isVisitBased: false,
     },
     {
       id: "6",
       name: "6 Months",
       description: "6-month gym access",
       defaultDays: 180,
+      isVisitBased: false,
     },
     {
       id: "7",
       name: "1 Year",
       description: "Yearly gym access",
       defaultDays: 365,
+      isVisitBased: false,
     },
   ],
 };
@@ -126,7 +164,14 @@ export function EditMemberDialog({
   onOpenChange,
   onSuccess,
 }: EditMemberDialogProps) {
-  const { updateUser, loading, error, clearError } = useUsersStore();
+  const {
+    updateUser,
+    loading,
+    error,
+    clearError,
+    // Check-in functionality
+    checkinUser,
+  } = useUsersStore();
 
   const [formData, setFormData] = useState<UpdateUserPayload>({
     username: "",
@@ -137,11 +182,13 @@ export function EditMemberDialog({
     start_date: "",
     end_date: "",
     profile_picture_url: "",
+    // Add check-in option
+    checkin_today: false,
   });
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   // Image upload states
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
@@ -149,14 +196,15 @@ export function EditMemberDialog({
   const [imageUploadError, setImageUploadError] = useState<string>("");
   const [originalImageUrl, setOriginalImageUrl] = useState<string>("");
 
-  // FIXED: Better form reset and initialization
+  // Check-in states
+  const [showCheckinOption, setShowCheckinOption] = useState(false);
+
+  // Form reset and initialization
   useEffect(() => {
     if (user && open) {
-      // Get today's date as default start date
       const today = new Date().toISOString().split("T")[0];
-
       const userProfileUrl = user.profile_picture_url || "";
-      
+
       setFormData({
         username: user.username || "",
         email: user.email || "",
@@ -172,14 +220,18 @@ export function EditMemberDialog({
           ? user.membership.expiry_date.split(" ")[0]
           : "",
         profile_picture_url: userProfileUrl,
+        checkin_today: false,
       });
-      
-      // Set original image URL and current display
+
       setOriginalImageUrl(userProfileUrl);
       setImagePreview("");
       setSelectedFile(null);
       setImageUploadError("");
       setFormErrors({});
+
+      // Show check-in option for visit-based users who can check in
+      setShowCheckinOption(isVisitBased(user) && canCheckin(user));
+
       clearError();
     }
   }, [user, open, clearError]);
@@ -205,12 +257,11 @@ export function EditMemberDialog({
       errors.last_name = "Last name is required";
     }
 
-    // Check if image is selected but not uploaded
     if (selectedFile && !formData.profile_picture_url) {
       errors.image = "Please upload the selected image before submitting";
     }
 
-    // FIXED: Better membership validation
+    // Membership validation
     if (formData.level_id && formData.level_id > 0) {
       if (!formData.start_date) {
         errors.start_date = "Start date is required when assigning membership";
@@ -235,29 +286,25 @@ export function EditMemberDialog({
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      setImageUploadError('Please select an image file');
+    if (!file.type.startsWith("image/")) {
+      setImageUploadError("Please select an image file");
       return;
     }
 
-    // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      setImageUploadError('Image size must be less than 5MB');
+      setImageUploadError("Image size must be less than 5MB");
       return;
     }
 
     setSelectedFile(file);
     setImageUploadError("");
-    
-    // Create preview
+
     const reader = new FileReader();
     reader.onload = () => {
       setImagePreview(reader.result as string);
     };
     reader.readAsDataURL(file);
 
-    // Clear the uploaded URL if a new file is selected
     if (formData.profile_picture_url !== originalImageUrl) {
       handleChange("profile_picture_url", originalImageUrl);
     }
@@ -272,10 +319,10 @@ export function EditMemberDialog({
     try {
       const uploadedUrl = await uploadToCloudinary(selectedFile);
       handleChange("profile_picture_url", uploadedUrl);
-      console.log('Image uploaded successfully:', uploadedUrl);
+      console.log("Image uploaded successfully:", uploadedUrl);
     } catch (error) {
-      console.error('Image upload error:', error);
-      setImageUploadError('Failed to upload image. Please try again.');
+      console.error("Image upload error:", error);
+      setImageUploadError("Failed to upload image. Please try again.");
     } finally {
       setIsUploadingImage(false);
     }
@@ -286,11 +333,12 @@ export function EditMemberDialog({
     setImagePreview("");
     setImageUploadError("");
     handleChange("profile_picture_url", "");
-    
-    // Reset the file input
-    const fileInput = document.getElementById('profile_picture') as HTMLInputElement;
+
+    const fileInput = document.getElementById(
+      "profile_picture"
+    ) as HTMLInputElement;
     if (fileInput) {
-      fileInput.value = '';
+      fileInput.value = "";
     }
   };
 
@@ -299,11 +347,12 @@ export function EditMemberDialog({
     setImagePreview("");
     setImageUploadError("");
     handleChange("profile_picture_url", originalImageUrl);
-    
-    // Reset the file input
-    const fileInput = document.getElementById('profile_picture') as HTMLInputElement;
+
+    const fileInput = document.getElementById(
+      "profile_picture"
+    ) as HTMLInputElement;
     if (fileInput) {
-      fileInput.value = '';
+      fileInput.value = "";
     }
   };
 
@@ -315,7 +364,6 @@ export function EditMemberDialog({
     setIsSubmitting(true);
 
     try {
-      // FIXED: Always send the membership data when level_id is provided
       const updatePayload: UpdateUserPayload = {};
 
       // Basic fields - only if changed
@@ -337,20 +385,21 @@ export function EditMemberDialog({
         updatePayload.profile_picture_url = formData.profile_picture_url;
       }
 
-      // FIXED: Always include membership data when level_id is set
-      // This ensures the backend always processes the membership change
+      // Include check-in request if enabled
+      if (formData.checkin_today && showCheckinOption) {
+        updatePayload.checkin_today = true;
+      }
+
+      // Membership data - always include when level_id is set
       if (formData.level_id !== undefined) {
         updatePayload.level_id = formData.level_id;
 
-        // Include dates if we're assigning a membership (not canceling)
         if (formData.level_id && formData.level_id > 0) {
           updatePayload.start_date = formData.start_date;
           updatePayload.end_date = formData.end_date;
         }
       }
 
-      // FIXED: Don't check for "no changes" when membership is involved
-      // The backend should handle membership updates properly
       if (Object.keys(updatePayload).length === 0) {
         setFormErrors({ general: "No changes detected" });
         return;
@@ -359,19 +408,14 @@ export function EditMemberDialog({
       console.log("Sending update payload:", updatePayload);
 
       const updatedUser = await updateUser(user.id, updatePayload);
-
       console.log("User updated successfully:", updatedUser);
 
-      // Close dialog and notify success
       onOpenChange(false);
       onSuccess?.();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       console.error("Failed to update user:", error);
 
-      // FIXED: Better error handling for different error types
       let errorMessage = "Failed to update user. Please try again.";
-
       if (error.message) {
         errorMessage = error.message;
       } else if (error.data?.message) {
@@ -386,7 +430,6 @@ export function EditMemberDialog({
     }
   };
 
-  // FIXED: Better date calculation
   const calculateEndDate = (startDate: string, daysToAdd: number) => {
     if (!startDate) return "";
 
@@ -396,7 +439,6 @@ export function EditMemberDialog({
     return end.toISOString().split("T")[0];
   };
 
-  // FIXED: Improved membership change handler
   const handleMembershipChange = (value: string) => {
     if (value === "none" || value === "0") {
       handleChange("level_id", 0);
@@ -405,7 +447,6 @@ export function EditMemberDialog({
       const levelId = parseInt(value);
       handleChange("level_id", levelId);
 
-      // Find the selected plan and calculate default end date
       const selectedPlan = allPlans.find((plan) => plan.id === value);
       if (selectedPlan && formData.start_date) {
         const defaultEndDate = calculateEndDate(
@@ -417,11 +458,9 @@ export function EditMemberDialog({
     }
   };
 
-  // FIXED: Handle start date changes to recalculate end date
   const handleStartDateChange = (newStartDate: string) => {
     handleChange("start_date", newStartDate);
 
-    // Recalculate end date if membership is selected
     if (formData.level_id && formData.level_id > 0) {
       const selectedPlan = allPlans.find(
         (plan) => plan.id === formData.level_id?.toString()
@@ -442,30 +481,29 @@ export function EditMemberDialog({
       ? allPlans.find((plan) => plan.id === formData.level_id?.toString())
       : null;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleChange = (field: keyof UpdateUserPayload, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
-    // Clear error when user starts typing
     if (formErrors[field]) {
       setFormErrors((prev) => ({ ...prev, [field]: "" }));
     }
-    // Clear general errors
     if (formErrors.general) {
       setFormErrors((prev) => ({ ...prev, general: "" }));
     }
   };
 
-  // Check if form can be submitted (no pending image upload)
-  const canSubmit = !selectedFile || formData.profile_picture_url !== originalImageUrl;
-
-  // Get current display image
+  // Check if form can be submitted
+  const canSubmit =
+    !selectedFile || formData.profile_picture_url !== originalImageUrl;
   const currentDisplayImage = imagePreview || formData.profile_picture_url;
+
+  // Get visit information for current user
+  const visitInfo = user && isVisitBased(user) ? formatVisitInfo(user) : null;
 
   if (!user) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Member</DialogTitle>
           <DialogDescription>
@@ -474,7 +512,6 @@ export function EditMemberDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {/* FIXED: Show both general errors and API errors */}
         {(error || formErrors.general) && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
@@ -483,12 +520,87 @@ export function EditMemberDialog({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Visit-Based Information Display */}
+          {visitInfo && (
+            <div className="bg-blue-50 p-4 rounded-lg space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4" />
+                  Current Visit Status
+                </h4>
+                <Badge className="bg-blue-100 text-blue-800">
+                  Visit-Based Plan
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                <div>
+                  <div className="text-muted-foreground">Remaining</div>
+                  <div className="font-medium text-green-600">
+                    {visitInfo.remaining_visits}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Used</div>
+                  <div className="font-medium">{visitInfo.used_visits}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Total</div>
+                  <div className="font-medium">{visitInfo.total_visits}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Reset In</div>
+                  <div className="font-medium">
+                    {visitInfo.daysUntilReset} days
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-sm">
+                <span className="text-muted-foreground">Status: </span>
+                <span className="font-medium">{visitInfo.status}</span>
+              </div>
+
+              {visitInfo.hasCheckedInToday && (
+                <div className="text-sm text-green-600 font-medium flex items-center gap-1">
+                  <UserCheck className="h-4 w-4" />
+                  Already checked in today
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Check-in Option for Visit-Based Users */}
+          {showCheckinOption && (
+            <div className="bg-green-50 p-4 rounded-lg space-y-3">
+              <div className="flex items-center justify-between">
+                <Label
+                  htmlFor="checkin_today"
+                  className="flex items-center gap-2 font-medium"
+                >
+                  <UserCheck className="h-4 w-4" />
+                  Check in today
+                </Label>
+                <Switch
+                  id="checkin_today"
+                  checked={formData.checkin_today}
+                  onCheckedChange={(checked) =>
+                    handleChange("checkin_today", checked)
+                  }
+                />
+              </div>
+              <p className="text-sm text-green-700">
+                Enable this option to record a visit check-in for today when
+                updating the member.
+              </p>
+            </div>
+          )}
+
           {/* Profile Picture Upload */}
           <div className="space-y-4 border-b pb-4">
             <h4 className="font-medium">Profile Picture</h4>
-            
+
             <div className="flex flex-col items-center space-y-4">
-              {/* Image Preview */}
               <div className="relative">
                 {currentDisplayImage ? (
                   <div className="relative">
@@ -512,7 +624,6 @@ export function EditMemberDialog({
                 )}
               </div>
 
-              {/* File Input */}
               <div className="flex flex-col items-center space-y-2">
                 <Label htmlFor="profile_picture" className="cursor-pointer">
                   <div className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
@@ -532,61 +643,59 @@ export function EditMemberDialog({
                 </p>
               </div>
 
-              {/* Action Buttons */}
               <div className="flex flex-col space-y-2 w-full max-w-[200px]">
-                {/* Upload Button */}
-                {selectedFile && formData.profile_picture_url === originalImageUrl && (
-                  <Button
-                    type="button"
-                    onClick={handleImageUpload}
-                    disabled={isUploadingImage}
-                    size="sm"
-                    className="w-full"
-                  >
-                    {isUploadingImage ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Uploading...
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="mr-2 h-4 w-4" />
-                        Upload Image
-                      </>
-                    )}
-                  </Button>
-                )}
+                {selectedFile &&
+                  formData.profile_picture_url === originalImageUrl && (
+                    <Button
+                      type="button"
+                      onClick={handleImageUpload}
+                      disabled={isUploadingImage}
+                      size="sm"
+                      className="w-full"
+                    >
+                      {isUploadingImage ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="mr-2 h-4 w-4" />
+                          Upload Image
+                        </>
+                      )}
+                    </Button>
+                  )}
 
-                {/* Restore Original Button */}
-                {originalImageUrl && (formData.profile_picture_url !== originalImageUrl || selectedFile) && (
-                  <Button
-                    type="button"
-                    onClick={handleRestoreOriginalImage}
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                  >
-                    Restore Original
-                  </Button>
-                )}
+                {originalImageUrl &&
+                  (formData.profile_picture_url !== originalImageUrl ||
+                    selectedFile) && (
+                    <Button
+                      type="button"
+                      onClick={handleRestoreOriginalImage}
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                    >
+                      Restore Original
+                    </Button>
+                  )}
               </div>
 
-              {/* Upload Status */}
-              {selectedFile && formData.profile_picture_url !== originalImageUrl && (
-                <p className="text-sm text-green-600 flex items-center">
-                  <span className="mr-1">✓</span>
-                  New image uploaded successfully
-                </p>
-              )}
+              {selectedFile &&
+                formData.profile_picture_url !== originalImageUrl && (
+                  <p className="text-sm text-green-600 flex items-center">
+                    <span className="mr-1">✓</span>
+                    New image uploaded successfully
+                  </p>
+                )}
 
-              {/* Upload Error */}
               {imageUploadError && (
                 <p className="text-sm text-destructive text-center">
                   {imageUploadError}
                 </p>
               )}
 
-              {/* Form Error for Image */}
               {formErrors.image && (
                 <p className="text-sm text-destructive text-center">
                   {formErrors.image}
@@ -657,8 +766,10 @@ export function EditMemberDialog({
             </div>
           </div>
 
+          <Separator />
+
           {/* Membership information */}
-          <div className="space-y-4 border-t pt-4">
+          <div className="space-y-4">
             <h4 className="font-medium">Membership Information</h4>
 
             <div className="space-y-2">
@@ -682,9 +793,21 @@ export function EditMemberDialog({
                   {membershipPlans.withTrainer.map((plan) => (
                     <SelectItem key={plan.id} value={plan.id}>
                       <div className="flex flex-col">
-                        <span>{plan.name}</span>
+                        <div className="flex items-center gap-2">
+                          <span>{plan.name}</span>
+                          {plan.isVisitBased && (
+                            <Badge
+                              variant="outline"
+                              className="text-xs bg-blue-100 text-blue-800"
+                            >
+                              Visit-Based
+                            </Badge>
+                          )}
+                        </div>
                         <span className="text-xs text-muted-foreground">
-                          Default: {plan.defaultDays} days
+                          {plan.isVisitBased
+                            ? `${plan.monthlyVisits} visits/month`
+                            : `${plan.defaultDays} days`}
                         </span>
                       </div>
                     </SelectItem>
@@ -697,9 +820,21 @@ export function EditMemberDialog({
                   {membershipPlans.withoutTrainer.map((plan) => (
                     <SelectItem key={plan.id} value={plan.id}>
                       <div className="flex flex-col">
-                        <span>{plan.name}</span>
+                        <div className="flex items-center gap-2">
+                          <span>{plan.name}</span>
+                          {plan.isVisitBased && (
+                            <Badge
+                              variant="outline"
+                              className="text-xs bg-blue-100 text-blue-800"
+                            >
+                              Visit-Based
+                            </Badge>
+                          )}
+                        </div>
                         <span className="text-xs text-muted-foreground">
-                          Default: {plan.defaultDays} days
+                          {plan.isVisitBased
+                            ? `${plan.monthlyVisits} visits/month`
+                            : `${plan.defaultDays} days`}
                         </span>
                       </div>
                     </SelectItem>
@@ -711,20 +846,40 @@ export function EditMemberDialog({
             {formData.level_id && formData.level_id > 0 && (
               <>
                 {selectedPlan && (
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
-                    <p className="text-sm text-blue-800">
-                      <strong>Selected Plan:</strong> {selectedPlan.name}
-                    </p>
-                    <p className="text-xs text-blue-600 mt-1">
-                      Default duration: {selectedPlan.defaultDays} days. You can
-                      modify the dates below if needed.
+                  <div
+                    className={`p-3 border rounded-md ${
+                      selectedPlan.isVisitBased
+                        ? "bg-blue-50 border-blue-200"
+                        : "bg-blue-50 border-blue-200"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <p className="text-sm font-medium">
+                        Selected Plan: {selectedPlan.name}
+                      </p>
+                      {selectedPlan.isVisitBased && (
+                        <Badge className="bg-blue-100 text-blue-800">
+                          Visit-Based
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {selectedPlan.isVisitBased
+                        ? `Visit-based plan with ${selectedPlan.monthlyVisits} visits per month. Visits reset monthly based on start date.`
+                        : `Time-based plan with ${selectedPlan.defaultDays} days duration. You can modify the dates below if needed.`}
                     </p>
                   </div>
                 )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="start_date">Start Date *</Label>
+                    <Label
+                      htmlFor="start_date"
+                      className="flex items-center gap-1"
+                    >
+                      <Calendar className="h-3 w-3" />
+                      Start Date *
+                    </Label>
                     <Input
                       id="start_date"
                       type="date"
@@ -739,7 +894,13 @@ export function EditMemberDialog({
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="end_date">End Date *</Label>
+                    <Label
+                      htmlFor="end_date"
+                      className="flex items-center gap-1"
+                    >
+                      <Calendar className="h-3 w-3" />
+                      End Date *
+                    </Label>
                     <Input
                       id="end_date"
                       type="date"
@@ -753,10 +914,35 @@ export function EditMemberDialog({
                       </p>
                     )}
                     <p className="text-xs text-muted-foreground">
-                      Auto-calculated based on plan. You can modify if needed.
+                      {selectedPlan?.isVisitBased
+                        ? "For visit-based plans, this sets the billing cycle duration."
+                        : "Auto-calculated based on plan. You can modify if needed."}
                     </p>
                   </div>
                 </div>
+
+                {/* Additional Info for Visit-Based Plans */}
+                {selectedPlan?.isVisitBased && (
+                  <div className="bg-amber-50 p-3 rounded-md border border-amber-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <TrendingUp className="h-4 w-4 text-amber-600" />
+                      <p className="text-sm font-medium text-amber-800">
+                        Visit-Based Plan Information
+                      </p>
+                    </div>
+                    <div className="text-xs text-amber-700 space-y-1">
+                      <p>
+                        • This plan includes {selectedPlan.monthlyVisits} visits
+                        per billing cycle
+                      </p>
+                      <p>
+                        • Visits reset automatically based on the start date
+                      </p>
+                      <p>• Unused visits do not carry over to the next cycle</p>
+                      <p>• Members can only check in once per day</p>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -772,16 +958,24 @@ export function EditMemberDialog({
             </Button>
             <Button
               type="submit"
-              disabled={isSubmitting || loading || isUploadingImage || !canSubmit}
+              disabled={
+                isSubmitting || loading || isUploadingImage || !canSubmit
+              }
               className="gradient-gym text-white"
             >
               {isSubmitting || loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Updating...
+                  {formData.checkin_today && showCheckinOption
+                    ? "Updating & Checking In..."
+                    : "Updating..."}
                 </>
               ) : (
-                "Update Member"
+                <>
+                  {formData.checkin_today && showCheckinOption
+                    ? "Update & Check In"
+                    : "Update Member"}
+                </>
               )}
             </Button>
           </DialogFooter>

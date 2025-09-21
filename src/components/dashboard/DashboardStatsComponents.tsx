@@ -20,7 +20,6 @@ import {
 } from "lucide-react";
 import { useDashboardStore } from "@/stores/dashboardStore";
 
-// Summary Stats Component - COMPLETE
 export const SummaryStatsGrid = () => {
   const { summaryStats, loading, errors, fetchSummaryStats } =
     useDashboardStore();
@@ -71,7 +70,7 @@ export const SummaryStatsGrid = () => {
   if (!summaryStats) return null;
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-3">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">Total Users</CardTitle>
@@ -125,7 +124,7 @@ export const SummaryStatsGrid = () => {
         </CardContent>
       </Card>
 
-      <Card>
+      {/* <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">Health Score</CardTitle>
           <Activity className="h-4 w-4 text-muted-foreground" />
@@ -138,12 +137,11 @@ export const SummaryStatsGrid = () => {
             Overall gym performance
           </p>
         </CardContent>
-      </Card>
+      </Card> */}
     </div>
   );
 };
 
-// Daily Stats Card - COMPLETE
 export const DailyStatsCard = () => {
   const { dailyStats, loading, errors, fetchDailyStats } = useDashboardStore();
 
@@ -240,7 +238,6 @@ export const DailyStatsCard = () => {
   );
 };
 
-// Pause Stats Card - COMPLETE
 export const PauseStatsCard = () => {
   const { pauseStats, loading, errors, fetchPauseStats } = useDashboardStore();
 
@@ -274,7 +271,11 @@ export const PauseStatsCard = () => {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             Pause Statistics
-            <Button variant="outline" size="sm" onClick={() => fetchPauseStats()}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchPauseStats()}
+            >
               <RefreshCw className="h-4 w-4" />
             </Button>
           </CardTitle>
@@ -346,7 +347,6 @@ export const PauseStatsCard = () => {
   );
 };
 
-// Membership Status Card - COMPLETE
 export const MembershipStatusCard = () => {
   const { summaryStats, loading, errors, fetchSummaryStats } =
     useDashboardStore();
@@ -417,7 +417,6 @@ export const MembershipStatusCard = () => {
   );
 };
 
-// Recent Activities Card - COMPLETE
 export const RecentActivitiesCard = () => {
   const { recentActivities, loading, errors, fetchRecentActivities } =
     useDashboardStore();
@@ -554,7 +553,6 @@ export const RecentActivitiesCard = () => {
   );
 };
 
-// Expiring Memberships Card - COMPLETE
 export const ExpiringMembershipsCard = () => {
   const { expiringStats, loading, errors, fetchExpiringStats } =
     useDashboardStore();
@@ -679,7 +677,6 @@ export const ExpiringMembershipsCard = () => {
   );
 };
 
-// Growth Trends Chart - COMPLETE
 export const GrowthTrendsChart = () => {
   const { growthTrends, loading, errors, fetchGrowthTrends } =
     useDashboardStore();
@@ -707,7 +704,11 @@ export const GrowthTrendsChart = () => {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             Growth Trends
-            <Button variant="outline" size="sm" onClick={() => fetchGrowthTrends()}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchGrowthTrends()}
+            >
               <RefreshCw className="h-4 w-4" />
             </Button>
           </CardTitle>

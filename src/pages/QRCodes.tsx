@@ -13,14 +13,27 @@ import {
   AlertCircle,
   CheckCircle2,
   XCircle,
+  User,
+  Calendar,
+  TrendingUp,
+  UserCheck,
+  Clock,
+  Shield,
+  AlertTriangle,
 } from "lucide-react";
 import {
   useUsersStore,
   hasQRCode,
   formatDate,
   formatQRCodeStatistics,
+  // Import visit-based utilities
+  isVisitBased,
+  getMembershipStatusDisplay,
+  getMembershipStatusColor,
 } from "@/stores/usersStore";
-import { QRScanner } from "@/components/QRScanner"; // Import the QR scanner component
+import { QRScanner } from "@/components/QRScanner";
+import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
+import { Separator } from "@/components/ui/separator";
 
 export default function QRCodes() {
   const {
@@ -31,6 +44,7 @@ export default function QRCodes() {
     qrCodeLoading,
     fetchUsers,
     lookupUserByQRCode,
+    lookupAndCheckinByQRCode,
     getQRCodeStatistics,
     clearError,
     generateUserQRCode,
@@ -41,6 +55,7 @@ export default function QRCodes() {
   const [lookupResult, setLookupResult] = useState(null);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState("");
+  const [showCheckinOption, setShowCheckinOption] = useState(false);
 
   // Load initial data
   useEffect(() => {
@@ -58,7 +73,7 @@ export default function QRCodes() {
         user.qr_code.unique_id.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const handleQRCodeLookup = async (qrCodeValue) => {
+  const handleQRCodeLookup = async (qrCodeValue, performCheckin = false) => {
     if (!qrCodeValue.trim()) return;
 
     setLookupLoading(true);
@@ -66,14 +81,41 @@ export default function QRCodes() {
     setLookupResult(null);
 
     try {
-      const result = await lookupUserByQRCode(qrCodeValue.trim());
+      const result = await lookupAndCheckinByQRCode(
+        qrCodeValue.trim(),
+        performCheckin
+      );
       setLookupResult(result);
 
       if (!result.user_found) {
         setLookupError("No user found with this QR code");
+      } else {
+        // Show check-in option if user is visit-based and can check in
+        setShowCheckinOption(
+          result.user.membership?.is_visit_based &&
+            result.visit_status?.can_check_in
+        );
       }
     } catch (err) {
       setLookupError(err.message || "Failed to lookup QR code");
+    } finally {
+      setLookupLoading(false);
+    }
+  };
+
+  const handleCheckinUser = async () => {
+    if (!lookupResult?.user?.unique_id) return;
+
+    try {
+      setLookupLoading(true);
+      const result = await lookupAndCheckinByQRCode(
+        lookupResult.user.unique_id,
+        true // Perform check-in
+      );
+      setLookupResult(result);
+      setShowCheckinOption(false);
+    } catch (err) {
+      setLookupError(err.message || "Failed to check in user");
     } finally {
       setLookupLoading(false);
     }
@@ -88,6 +130,7 @@ export default function QRCodes() {
     } else {
       setLookupResult(null);
       setLookupError("");
+      setShowCheckinOption(false);
     }
   };
 
@@ -120,35 +163,40 @@ export default function QRCodes() {
 
   const handleQRScanned = (scannedData) => {
     console.log("QR Code scanned:", scannedData);
-    
+
     // Extract the 8-digit code from scanned data
-    // The scanned data might be a URL or just the code itself
     let qrCode = scannedData;
-    
+
     // If it's a URL, extract the code from it
-    if (scannedData.includes('/')) {
-      const urlParts = scannedData.split('/');
+    if (scannedData.includes("/")) {
+      const urlParts = scannedData.split("/");
       qrCode = urlParts[urlParts.length - 1];
     }
-    
+
     // Validate that it's an 8-digit alphanumeric code
     if (/^[A-Za-z0-9]{8}$/.test(qrCode)) {
-      // Set the search term to the scanned code
       setSearchTerm(qrCode);
-      
-      // Automatically lookup the user
       handleQRCodeLookup(qrCode);
-      
-      // Show success feedback
       console.log("Valid QR code detected:", qrCode);
     } else {
-      // Invalid QR code format
-      setLookupError("Invalid QR code format. Expected 8-digit alphanumeric code.");
+      setLookupError(
+        "Invalid QR code format. Expected 8-digit alphanumeric code."
+      );
       console.log("Invalid QR code format:", scannedData);
     }
-    
-    // Close scanner after successful scan
+
     setScannerActive(false);
+  };
+
+  // Get access status color and icon
+  const getAccessStatusDisplay = (result) => {
+    if (!result.access_status) return { color: "gray", icon: AlertCircle };
+
+    const canAccess = result.access_status.can_access;
+    return {
+      color: canAccess ? "green" : "red",
+      icon: canAccess ? CheckCircle2 : XCircle,
+    };
   };
 
   // Format statistics for display
@@ -162,14 +210,11 @@ export default function QRCodes() {
         <div>
           <h1 className="text-3xl font-bold">QR Code Management</h1>
           <p className="text-muted-foreground mt-2">
-            Generate and manage member QR codes
+            Generate and manage member QR codes, scan for access control
           </p>
         </div>
         <div className="flex gap-2">
-          <Button
-            onClick={handleScanQR}
-            variant="default"
-          >
+          <Button onClick={handleScanQR} variant="default">
             <Camera className="w-4 h-4 mr-2" />
             Scan QR Code
           </Button>
@@ -244,7 +289,7 @@ export default function QRCodes() {
         </Card>
       </div>
 
-      {/* QR Code Lookup Result */}
+      {/* Enhanced QR Code Lookup Result */}
       {lookupResult && (
         <Card
           className={`border-2 ${
@@ -263,37 +308,241 @@ export default function QRCodes() {
           </CardHeader>
           <CardContent>
             {lookupResult.user_found ? (
-              <div className="space-y-2">
-                
-                <h3 className="font-semibold text-lg">
-                  {lookupResult.user.name}
-                </h3>
-                <p className="text-muted-foreground">
-                  {lookupResult.user.email}
-                </p>
-                <div className="flex items-center gap-2">
-                  <Badge
-                    variant={
-                      lookupResult.user.membership.status === "active"
-                        ? "default"
-                        : "secondary"
-                    }
-                  >
-                    {lookupResult.user.membership.plan}
-                  </Badge>
-                  <span className="text-sm text-muted-foreground">
-                    Status: {lookupResult.user.membership.status}
-                  </span>
+              <div className="space-y-4">
+                {/* User Basic Info */}
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0">
+                    {lookupResult.user.first_name &&
+                    lookupResult.user.last_name ? (
+                      <Avatar className="w-20 h-20">
+                        <AvatarImage
+                          src={
+                            lookupResult.user.profile_picture_url ||
+                            lookupResult.user.avatar_url
+                          }
+                          alt={lookupResult.user.name}
+                          className="w-full h-full object-cover rounded-full"
+                        />
+                        <AvatarFallback className="w-20 h-20 bg-blue-100 text-blue-600 flex items-center justify-center rounded-full">
+                          {lookupResult.user.first_name[0]}
+                          {lookupResult.user.last_name[0]}
+                        </AvatarFallback>
+                      </Avatar>
+                    ) : (
+                      <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center">
+                        {lookupResult.user.profile_picture_url ||
+                        lookupResult.user.avatar_url ? (
+                          <img
+                            src={
+                              lookupResult.user.profile_picture_url ||
+                              lookupResult.user.avatar_url
+                            }
+                            alt={lookupResult.user.name}
+                            className="w-full h-full object-cover rounded-full"
+                          />
+                        ) : (
+                          <User className="w-10 h-10 text-gray-400" />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-grow space-y-2">
+                    <h3 className="text-xl font-semibold">
+                      {lookupResult.user.name}
+                    </h3>
+                    <p className="text-muted-foreground">
+                      {lookupResult.user.email}
+                    </p>
+                    <p className="text-sm text-muted-foreground font-mono">
+                      QR Code: {lookupResult.user.unique_id}
+                    </p>
+                  </div>
                 </div>
-                {lookupResult.user.membership.expiry_date && (
-                  <p className="text-sm">
-                    Expires:{" "}
-                    {formatDate(lookupResult.user.membership.expiry_date)}
-                  </p>
+
+                <Separator />
+
+                {/* Membership Information */}
+                <div className="space-y-3">
+                  <h4 className="font-medium flex items-center gap-2">
+                    <Shield className="w-4 h-4" />
+                    Membership Details
+                  </h4>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge
+                          className={`${
+                            lookupResult.user.membership.status === "active"
+                              ? "bg-green-100 text-green-800"
+                              : "bg-gray-100 text-gray-800"
+                          }`}
+                        >
+                          {lookupResult.user.membership.plan}
+                        </Badge>
+                        {lookupResult.user.membership.is_visit_based && (
+                          <Badge
+                            variant="outline"
+                            className="bg-blue-100 text-blue-800"
+                          >
+                            Visit-Based
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Status: {lookupResult.user.membership.status}
+                      </p>
+                    </div>
+
+                    {lookupResult.user.membership.expiry_date && (
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-muted-foreground" />
+                        <div>
+                          <p className="text-sm font-medium">Expires</p>
+                          <p className="text-sm text-muted-foreground">
+                            {formatDate(
+                              lookupResult.user.membership.expiry_date
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Visit-Based Information */}
+                  {lookupResult.user.membership.is_visit_based &&
+                    lookupResult.user.membership.visit_info && (
+                      <div className="bg-blue-50 p-3 rounded-lg">
+                        <h5 className="font-medium flex items-center gap-2 mb-2">
+                          <TrendingUp className="w-4 h-4 text-blue-600" />
+                          Visit Information
+                        </h5>
+                        <div className="grid grid-cols-3 gap-4 text-sm">
+                          <div>
+                            <p className="text-muted-foreground">Remaining</p>
+                            <p className="font-medium text-green-600">
+                              {
+                                lookupResult.user.membership.visit_info
+                                  .remaining_visits
+                              }
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Used</p>
+                            <p className="font-medium">
+                              {
+                                lookupResult.user.membership.visit_info
+                                  .used_visits
+                              }
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Total</p>
+                            <p className="font-medium">
+                              {
+                                lookupResult.user.membership.visit_info
+                                  .total_visits
+                              }
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                </div>
+
+                <Separator />
+
+                {/* Access Status */}
+                {lookupResult.access_status && (
+                  <div className="space-y-3">
+                    <h4 className="font-medium flex items-center gap-2">
+                      <Shield className="w-4 h-4" />
+                      Access Status
+                    </h4>
+                    <div
+                      className={`p-3 rounded-lg border-2 ${
+                        lookupResult.access_status.can_access
+                          ? "bg-green-50 border-green-200"
+                          : "bg-red-50 border-red-200"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        {lookupResult.access_status.can_access ? (
+                          <CheckCircle2 className="w-5 h-5 text-green-600" />
+                        ) : (
+                          <XCircle className="w-5 h-5 text-red-600" />
+                        )}
+                        <span
+                          className={`font-medium ${
+                            lookupResult.access_status.can_access
+                              ? "text-green-800"
+                              : "text-red-800"
+                          }`}
+                        >
+                          {lookupResult.access_status.status_message}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 )}
-                <p className="text-sm text-muted-foreground">
-                  QR Code: {lookupResult.user.unique_id}
-                </p>
+
+                {/* Visit Status and Check-in */}
+                {lookupResult.visit_status && (
+                  <div className="space-y-3">
+                    <h4 className="font-medium flex items-center gap-2">
+                      <UserCheck className="w-4 h-4" />
+                      Today's Visit Status
+                    </h4>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {lookupResult.visit_status.already_checked_in_today ? (
+                          <div className="flex items-center gap-2 text-green-600">
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span className="text-sm font-medium">
+                              Already checked in today
+                            </span>
+                          </div>
+                        ) : lookupResult.visit_status.can_check_in ? (
+                          <div className="flex items-center gap-2 text-blue-600">
+                            <Clock className="w-4 h-4" />
+                            <span className="text-sm font-medium">
+                              Ready to check in
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 text-gray-600">
+                            <AlertTriangle className="w-4 h-4" />
+                            <span className="text-sm font-medium">
+                              Cannot check in
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {showCheckinOption &&
+                        lookupResult.visit_status.can_check_in && (
+                          <Button
+                            onClick={handleCheckinUser}
+                            disabled={lookupLoading}
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700"
+                          >
+                            {lookupLoading ? (
+                              <>
+                                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                                Checking In...
+                              </>
+                            ) : (
+                              <>
+                                <UserCheck className="w-4 h-4 mr-2" />
+                                Check In Now
+                              </>
+                            )}
+                          </Button>
+                        )}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <p className="text-red-600">
@@ -324,7 +573,7 @@ export default function QRCodes() {
                 value={searchTerm}
                 onChange={(e) => handleSearch(e.target.value)}
                 className="pl-10"
-                maxLength={50} // Reasonable limit for search
+                maxLength={50}
               />
             </div>
             {lookupLoading && (
@@ -379,14 +628,28 @@ export default function QRCodes() {
                         </p>
                         <div className="flex items-center gap-2 mt-1">
                           <Badge
-                            variant={
-                              user.membership.is_active
-                                ? "default"
-                                : "secondary"
-                            }
+                            className={`${
+                              getMembershipStatusColor(user) === "green"
+                                ? "bg-green-100 text-green-800"
+                                : getMembershipStatusColor(user) === "orange"
+                                ? "bg-orange-100 text-orange-800"
+                                : getMembershipStatusColor(user) === "red"
+                                ? "bg-red-100 text-red-800"
+                                : getMembershipStatusColor(user) === "yellow"
+                                ? "bg-yellow-100 text-yellow-800"
+                                : "bg-gray-100 text-gray-800"
+                            }`}
                           >
-                            {user.membership.level_name || "No Membership"}
+                            {getMembershipStatusDisplay(user)}
                           </Badge>
+                          {isVisitBased(user) && (
+                            <Badge
+                              variant="outline"
+                              className="text-xs bg-blue-100 text-blue-800"
+                            >
+                              Visit-Based
+                            </Badge>
+                          )}
                           {hasQRCode(user) ? (
                             <span className="text-xs text-green-600 font-medium font-mono">
                               QR: {user.qr_code.unique_id}

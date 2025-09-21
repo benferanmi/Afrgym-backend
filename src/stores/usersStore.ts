@@ -20,7 +20,7 @@ export interface GymUser {
     expiry_date: string | null;
     start_date: string | null;
     is_active: boolean;
-    // NEW: Pause-related fields
+    // Pause-related fields
     is_paused?: boolean;
     pause_info?: {
       pause_date: string;
@@ -36,6 +36,18 @@ export interface GymUser {
         days_paused?: number;
         reason?: string;
       }>;
+    };
+    // NEW: Visit-based membership fields
+    is_visit_based?: boolean;
+    visit_info?: {
+      total_visits: number;
+      remaining_visits: number;
+      used_visits: number;
+      visit_log: string[]; // Array of YYYY-MM-DD dates
+      cycle_start_date: string;
+      cycle_end_date: string;
+      next_reset_date: string;
+      is_current_cycle: boolean;
     };
   };
   avatar_url: string;
@@ -68,9 +80,11 @@ export interface UpdateUserPayload {
   start_date?: string;
   end_date?: string;
   profile_picture_url?: string;
+  // NEW: Visit-based update options
+  checkin_today?: boolean;
 }
 
-// NEW: Pause/Unpause related interfaces
+// Pause/Unpause related interfaces
 export interface PauseMembershipPayload {
   reason?: string;
 }
@@ -117,6 +131,47 @@ export interface PauseStatusResponse {
   }>;
 }
 
+// NEW: Visit-based interfaces
+export interface VisitInfoResponse {
+  success: boolean;
+  user_id: number;
+  membership_level: string;
+  visit_info: {
+    total_visits: number;
+    remaining_visits: number;
+    used_visits: number;
+    visit_log: string[];
+    cycle_start_date: string;
+    cycle_end_date: string;
+    next_reset_date: string;
+    is_current_cycle: boolean;
+  };
+}
+
+export interface UpdateVisitPayload {
+  visit_allowance?: number;
+  reset_log?: boolean;
+}
+
+export interface UpdateVisitResponse {
+  success: boolean;
+  message: string;
+  user_id: number;
+  updated_fields: string[];
+  visit_info: VisitInfoResponse["visit_info"];
+}
+
+export interface CheckinResponse {
+  success: boolean;
+  message: string;
+  check_in_date: string;
+  visit_info: {
+    remaining_visits: number;
+    used_visits: number;
+    total_visits: number;
+  };
+}
+
 // QR Code related interfaces
 export interface QRCodeData {
   success: boolean;
@@ -148,6 +203,13 @@ export interface QRCodeUser {
     plan: string;
     status: string;
     expiry_date: string | null;
+    // NEW: Visit-based info in QR lookup
+    is_visit_based?: boolean;
+    visit_info?: {
+      remaining_visits: number;
+      used_visits: number;
+      total_visits: number;
+    };
   };
   unique_id: string;
   phone: string;
@@ -157,6 +219,20 @@ export interface QRCodeLookupResponse {
   success: boolean;
   user_found: boolean;
   user: QRCodeUser;
+  // NEW: Visit status in QR lookup
+  visit_status?: {
+    can_check_in: boolean;
+    already_checked_in_today: boolean;
+  };
+  access_status?: {
+    can_access: boolean;
+    status_message: string;
+  };
+}
+
+export interface QRCodeLookupAndCheckinPayload {
+  unique_id: string;
+  perform_checkin?: boolean;
 }
 
 export interface QRCodeStatistics {
@@ -169,6 +245,39 @@ export interface QRCodeStatistics {
     recent_generated: number;
     ben_plugin_active: boolean;
   };
+}
+
+// NEW: Visit-based statistics interfaces
+export interface VisitBasedStats {
+  success: boolean;
+  visit_based_stats: {
+    total_visit_based_users: number;
+    active_in_current_cycle: number;
+    users_with_exhausted_visits: number;
+    total_visits_used: number;
+    total_visits_remaining: number;
+    average_visits_used: number;
+    average_visits_remaining: number;
+  };
+}
+
+export interface LowVisitUser {
+  user_id: number;
+  display_name: string;
+  email: string;
+  membership_level: string;
+  remaining_visits: number;
+  used_visits: number;
+  total_visits: number;
+  next_reset_date: string;
+  is_exhausted: boolean;
+}
+
+export interface LowVisitUsersResponse {
+  success: boolean;
+  threshold: number;
+  count: number;
+  low_visit_users: LowVisitUser[];
 }
 
 interface UsersResponse {
@@ -216,8 +325,16 @@ interface UsersState {
   qrCodeStatistics: QRCodeStatistics["statistics"] | null;
   qrCodeLoading: boolean;
 
+  // NEW: Visit-based statistics state
+  visitBasedStats: VisitBasedStats["visit_based_stats"] | null;
+  visitStatsLoading: boolean;
+
   // Actions
-  fetchUsers: (page?: number, search?: string, perPage?: number) => Promise<void>;
+  fetchUsers: (
+    page?: number,
+    search?: string,
+    perPage?: number
+  ) => Promise<void>;
   fetchSingleUser: (id: number) => Promise<GymUser>;
   addUser: (user: CreateUserPayload) => Promise<GymUser>;
   updateUser: (id: number, user: UpdateUserPayload) => Promise<GymUser>;
@@ -229,7 +346,7 @@ interface UsersState {
   getFilteredUsers: () => GymUser[];
   clearError: () => void;
 
-  // NEW: Pause/Unpause Actions
+  // Pause/Unpause Actions
   pauseMembership: (
     userId: number,
     reason?: string
@@ -241,8 +358,22 @@ interface UsersState {
   getUserQRCode: (id: number) => Promise<QRCodeData>;
   generateUserQRCode: (id: number) => Promise<GenerateQRCodeResponse>;
   lookupUserByQRCode: (uniqueId: string) => Promise<QRCodeLookupResponse>;
+  lookupAndCheckinByQRCode: (
+    uniqueId: string,
+    performCheckin?: boolean
+  ) => Promise<QRCodeLookupResponse>;
   searchUsersByQRCode: (qrCode: string, page?: number) => Promise<void>;
   getQRCodeStatistics: () => Promise<QRCodeStatistics["statistics"]>;
+
+  // NEW: Visit-based Actions
+  getUserVisits: (id: number) => Promise<VisitInfoResponse>;
+  updateUserVisits: (
+    id: number,
+    payload: UpdateVisitPayload
+  ) => Promise<UpdateVisitResponse>;
+  checkinUser: (id: number) => Promise<CheckinResponse>;
+  getVisitBasedStats: () => Promise<VisitBasedStats["visit_based_stats"]>;
+  getLowVisitUsers: (threshold?: number) => Promise<LowVisitUsersResponse>;
 }
 
 // Helper function to check if error is related to invalid token
@@ -348,6 +479,8 @@ export const useUsersStore = create<UsersState>((set, get) => ({
   error: null,
   qrCodeStatistics: null,
   qrCodeLoading: false,
+  visitBasedStats: null,
+  visitStatsLoading: false,
 
   fetchUsers: async (page = 1, search = "", perPage = 20) => {
     set({ loading: true, error: null });
@@ -551,7 +684,17 @@ export const useUsersStore = create<UsersState>((set, get) => ({
           !user.membership.is_active &&
           !user.membership.is_paused) ||
         (filterStatus === "no_membership" &&
-          user.membership.status === "no_membership");
+          user.membership.status === "no_membership") ||
+        // NEW: Visit-based filters
+        (filterStatus === "visit_based" && user.membership.is_visit_based) ||
+        (filterStatus === "low_visits" &&
+          user.membership.is_visit_based &&
+          user.membership.visit_info &&
+          user.membership.visit_info.remaining_visits <= 3) ||
+        (filterStatus === "exhausted_visits" &&
+          user.membership.is_visit_based &&
+          user.membership.visit_info &&
+          user.membership.visit_info.remaining_visits <= 0);
 
       return matchesSearch && matchesFilter;
     });
@@ -559,7 +702,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
 
   clearError: () => set({ error: null }),
 
-  // NEW: Pause/Unpause Actions
+  // Pause/Unpause Actions
   pauseMembership: async (userId: number, reason?: string) => {
     set({ loading: true, error: null });
 
@@ -825,6 +968,43 @@ export const useUsersStore = create<UsersState>((set, get) => ({
     }
   },
 
+  // NEW: Combined lookup and check-in action
+  lookupAndCheckinByQRCode: async (
+    uniqueId: string,
+    performCheckin = false
+  ) => {
+    set({ qrCodeLoading: true, error: null });
+
+    try {
+      const payload: QRCodeLookupAndCheckinPayload = {
+        unique_id: uniqueId,
+        perform_checkin: performCheckin,
+      };
+
+      const response: QRCodeLookupResponse = await apiCall(
+        `/qr/lookup-checkin`,
+        {
+          method: "POST",
+          body: JSON.stringify(payload),
+        }
+      );
+
+      set({ qrCodeLoading: false, error: null });
+      return response;
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to lookup and check-in user";
+      set({ qrCodeLoading: false, error: errorMessage });
+
+      if (!isTokenInvalidError(error)) {
+        throw new Error(errorMessage);
+      }
+      throw new Error(errorMessage);
+    }
+  },
+
   searchUsersByQRCode: async (qrCode: string, page = 1) => {
     set({ loading: true, error: null });
 
@@ -892,6 +1072,235 @@ export const useUsersStore = create<UsersState>((set, get) => ({
       throw new Error(errorMessage);
     }
   },
+
+  // NEW: Visit-based Actions
+  getUserVisits: async (id: number) => {
+    set({ loading: true, error: null });
+
+    try {
+      const response: VisitInfoResponse = await apiCall(`/users/${id}/visits`);
+
+      if (response.success) {
+        set({ loading: false, error: null });
+        return response;
+      } else {
+        throw new Error("Failed to fetch user visits");
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to fetch user visits";
+      set({ loading: false, error: errorMessage });
+
+      if (!isTokenInvalidError(error)) {
+        throw new Error(errorMessage);
+      }
+      throw new Error(errorMessage);
+    }
+  },
+
+  updateUserVisits: async (id: number, payload: UpdateVisitPayload) => {
+    set({ loading: true, error: null });
+
+    try {
+      const response: UpdateVisitResponse = await apiCall(
+        `/users/${id}/visits`,
+        {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (response.success) {
+        // Update the user in the users array with updated visit info
+        const { users, selectedUser } = get();
+        const updatedUsers = users.map((user) => {
+          if (user.id === id && user.membership.is_visit_based) {
+            return {
+              ...user,
+              membership: {
+                ...user.membership,
+                visit_info: response.visit_info,
+              },
+            };
+          }
+          return user;
+        });
+
+        // Update selected user if it's the same user
+        const updatedSelectedUser =
+          selectedUser?.id === id
+            ? {
+                ...selectedUser,
+                membership: {
+                  ...selectedUser.membership,
+                  visit_info: response.visit_info,
+                },
+              }
+            : selectedUser;
+
+        set({
+          users: updatedUsers,
+          selectedUser: updatedSelectedUser,
+          loading: false,
+          error: null,
+        });
+
+        return response;
+      } else {
+        throw new Error("Failed to update user visits");
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to update user visits";
+      set({ loading: false, error: errorMessage });
+
+      if (!isTokenInvalidError(error)) {
+        throw new Error(errorMessage);
+      }
+      throw new Error(errorMessage);
+    }
+  },
+
+  checkinUser: async (id: number) => {
+    set({ loading: true, error: null });
+
+    try {
+      const response: CheckinResponse = await apiCall(`/checkin/${id}`, {
+        method: "POST",
+      });
+
+      if (response.success) {
+        // Update the user in the users array with new visit info
+        const { users, selectedUser } = get();
+        const updatedUsers = users.map((user) => {
+          if (
+            user.id === id &&
+            user.membership.is_visit_based &&
+            user.membership.visit_info
+          ) {
+            return {
+              ...user,
+              membership: {
+                ...user.membership,
+                visit_info: {
+                  ...user.membership.visit_info,
+                  remaining_visits: response.visit_info.remaining_visits,
+                  used_visits: response.visit_info.used_visits,
+                  visit_log: [
+                    ...user.membership.visit_info.visit_log,
+                    response.check_in_date,
+                  ].sort(),
+                },
+              },
+            };
+          }
+          return user;
+        });
+
+        // Update selected user if it's the same user
+        const updatedSelectedUser =
+          selectedUser?.id === id &&
+          selectedUser.membership.is_visit_based &&
+          selectedUser.membership.visit_info
+            ? {
+                ...selectedUser,
+                membership: {
+                  ...selectedUser.membership,
+                  visit_info: {
+                    ...selectedUser.membership.visit_info,
+                    remaining_visits: response.visit_info.remaining_visits,
+                    used_visits: response.visit_info.used_visits,
+                    visit_log: [
+                      ...selectedUser.membership.visit_info.visit_log,
+                      response.check_in_date,
+                    ].sort(),
+                  },
+                },
+              }
+            : selectedUser;
+
+        set({
+          users: updatedUsers,
+          selectedUser: updatedSelectedUser,
+          loading: false,
+          error: null,
+        });
+
+        return response;
+      } else {
+        throw new Error("Failed to check in user");
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to check in user";
+      set({ loading: false, error: errorMessage });
+
+      if (!isTokenInvalidError(error)) {
+        throw new Error(errorMessage);
+      }
+      throw new Error(errorMessage);
+    }
+  },
+
+  getVisitBasedStats: async () => {
+    set({ visitStatsLoading: true, error: null });
+
+    try {
+      const response: VisitBasedStats = await apiCall(
+        "/memberships/visit-stats"
+      );
+
+      if (response.success) {
+        set({
+          visitBasedStats: response.visit_based_stats,
+          visitStatsLoading: false,
+          error: null,
+        });
+        return response.visit_based_stats;
+      } else {
+        throw new Error("Failed to fetch visit-based statistics");
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to fetch visit-based statistics";
+      set({ visitStatsLoading: false, error: errorMessage });
+
+      if (!isTokenInvalidError(error)) {
+        throw new Error(errorMessage);
+      }
+      throw new Error(errorMessage);
+    }
+  },
+
+  getLowVisitUsers: async (threshold = 3) => {
+    set({ loading: true, error: null });
+
+    try {
+      const response: LowVisitUsersResponse = await apiCall(
+        `/memberships/low-visits?threshold=${threshold}`
+      );
+
+      if (response.success) {
+        set({ loading: false, error: null });
+        return response;
+      } else {
+        throw new Error("Failed to fetch low visit users");
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to fetch low visit users";
+      set({ loading: false, error: errorMessage });
+
+      if (!isTokenInvalidError(error)) {
+        throw new Error(errorMessage);
+      }
+      throw new Error(errorMessage);
+    }
+  },
 }));
 
 // Utility functions for easier usage
@@ -906,6 +1315,15 @@ export const getMembershipStatusDisplay = (user: GymUser): string => {
   ) {
     return "No Membership";
   }
+
+  // NEW: Handle visit-based status
+  if (user.membership.is_visit_based && user.membership.visit_info) {
+    if (user.membership.visit_info.remaining_visits <= 0) {
+      return `${user.membership.level_name} (No Visits)`;
+    }
+    return `${user.membership.level_name} (${user.membership.visit_info.remaining_visits} visits)`;
+  }
+
   return user.membership.level_name;
 };
 
@@ -922,6 +1340,18 @@ export const getMembershipStatusColor = (user: GymUser): string => {
     return "gray";
   }
 
+  // NEW: Handle visit-based color coding
+  if (user.membership.is_visit_based && user.membership.visit_info) {
+    if (user.membership.visit_info.remaining_visits <= 0) {
+      return "red";
+    }
+    if (user.membership.visit_info.remaining_visits <= 3) {
+      return "orange";
+    }
+    return "green";
+  }
+
+  // Time-based membership color coding
   if (user.membership.expiry_date) {
     const expiryDate = new Date(user.membership.expiry_date);
     const now = new Date();
@@ -941,7 +1371,7 @@ export const formatDate = (dateString: string | null): string => {
   return new Date(dateString).toLocaleDateString();
 };
 
-// NEW: Pause-related utility functions
+// Pause-related utility functions
 export const isPaused = (user: GymUser): boolean => {
   return user.membership.is_paused === true;
 };
@@ -981,6 +1411,107 @@ export const formatPauseHistory = (
     actionText: entry.action === "paused" ? "Paused" : "Resumed",
     daysText: entry.days_paused ? `${entry.days_paused} days` : undefined,
   }));
+};
+
+// NEW: Visit-based utility functions
+export const isVisitBased = (user: GymUser): boolean => {
+  return user.membership.is_visit_based === true;
+};
+
+export const canCheckin = (user: GymUser): boolean => {
+  if (!isVisitBased(user) || !user.membership.is_active) {
+    return false;
+  }
+
+  if (user.membership.is_paused) {
+    return false;
+  }
+
+  if (!user.membership.visit_info) {
+    return false;
+  }
+
+  // Check if user has visits remaining
+  if (user.membership.visit_info.remaining_visits <= 0) {
+    return false;
+  }
+
+  // Check if user already checked in today
+  const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD format
+  return !user.membership.visit_info.visit_log.includes(today);
+};
+
+export const hasCheckedInToday = (user: GymUser): boolean => {
+  if (!isVisitBased(user) || !user.membership.visit_info) {
+    return false;
+  }
+
+  const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD format
+  return user.membership.visit_info.visit_log.includes(today);
+};
+
+export const getVisitStatusText = (user: GymUser): string => {
+  if (!isVisitBased(user)) {
+    return "Time-based membership";
+  }
+
+  if (!user.membership.visit_info) {
+    return "Visit information not available";
+  }
+
+  const { remaining_visits, used_visits, total_visits } =
+    user.membership.visit_info;
+
+  if (remaining_visits <= 0) {
+    return "No visits remaining this cycle";
+  }
+
+  if (hasCheckedInToday(user)) {
+    return `Checked in today - ${remaining_visits} visits remaining`;
+  }
+
+  return `${remaining_visits}/${total_visits} visits remaining`;
+};
+
+export const getVisitProgressPercentage = (user: GymUser): number => {
+  if (!isVisitBased(user) || !user.membership.visit_info) {
+    return 0;
+  }
+
+  const { used_visits, total_visits } = user.membership.visit_info;
+  return total_visits > 0 ? (used_visits / total_visits) * 100 : 0;
+};
+
+export const getDaysUntilVisitReset = (user: GymUser): number | null => {
+  if (!isVisitBased(user) || !user.membership.visit_info) {
+    return null;
+  }
+
+  const resetDate = new Date(user.membership.visit_info.next_reset_date);
+  const now = new Date();
+  const diffTime = resetDate.getTime() - now.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  return diffDays > 0 ? diffDays : 0;
+};
+
+export const formatVisitInfo = (user: GymUser) => {
+  if (!isVisitBased(user) || !user.membership.visit_info) {
+    return null;
+  }
+
+  const visitInfo = user.membership.visit_info;
+  const daysUntilReset = getDaysUntilVisitReset(user);
+
+  return {
+    status: getVisitStatusText(user),
+    progress: getVisitProgressPercentage(user),
+    canCheckin: canCheckin(user),
+    hasCheckedInToday: hasCheckedInToday(user),
+    daysUntilReset,
+    resetDate: formatDate(visitInfo.next_reset_date),
+    ...visitInfo,
+  };
 };
 
 // QR Code utility functions

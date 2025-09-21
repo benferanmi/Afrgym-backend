@@ -12,6 +12,9 @@ import {
   Pause,
   Play,
   Clock,
+  UserCheck,
+  Calendar,
+  TrendingUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +53,12 @@ import {
   getMembershipStatusDisplay,
   getMembershipStatusColor,
   formatDate,
+  // NEW: Import visit-based utility functions
+  isVisitBased,
+  canCheckin,
+  hasCheckedInToday,
+  getVisitStatusText,
+  getVisitProgressPercentage,
 } from "@/stores/usersStore";
 import { EditMemberDialog } from "@/components/members/EditMemberDialog";
 import { AddMemberDialog } from "@/components/members/AddMemberDialog";
@@ -112,6 +121,8 @@ export default function Members() {
     selectUser,
     deleteUser,
     clearError,
+    // NEW: Import visit-based store actions
+    checkinUser,
   } = useUsersStore();
 
   // State for edit dialog
@@ -137,6 +148,10 @@ export default function Members() {
   // Loading states for pause/unpause actions
   const [pauseLoading, setPauseLoading] = useState(false);
   const [unpauseLoading, setUnpauseLoading] = useState(false);
+
+  // NEW: Loading state for check-in actions
+  const [checkinLoading, setCheckinLoading] = useState(false);
+  const [checkinUserId, setCheckinUserId] = useState<number | null>(null);
 
   // Load users on component mount
   useEffect(() => {
@@ -215,6 +230,41 @@ export default function Members() {
   const handleUnpauseMembership = (user: GymUser) => {
     setUnpausingUser(user);
     setUnpauseDialogOpen(true);
+  };
+
+  // NEW: Handle check-in functionality
+  const handleCheckinUser = async (user: GymUser) => {
+    if (!canCheckin(user)) {
+      alert("User cannot check in at this time.");
+      return;
+    }
+
+    setCheckinLoading(true);
+    setCheckinUserId(user.id);
+
+    try {
+      const response = await checkinUser(user.id);
+
+      if (response.success) {
+        console.log("Check-in successful:", response.message);
+        // Optionally show a success message
+        alert(
+          `Check-in recorded! ${response.visit_info.remaining_visits} visits remaining.`
+        );
+
+        // Refresh users to show updated data
+        fetchUsers(currentPage, searchTerm);
+      }
+    } catch (error) {
+      console.error("Failed to check in user:", error);
+      alert(
+        "Failed to check in user: " +
+          (error instanceof Error ? error.message : "Unknown error")
+      );
+    } finally {
+      setCheckinLoading(false);
+      setCheckinUserId(null);
+    }
   };
 
   const executePauseMembership = async () => {
@@ -387,6 +437,23 @@ export default function Members() {
                 >
                   No Membership
                 </DropdownMenuItem>
+                {/* NEW: Visit-based filters */}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => handleFilterChange("visit_based")}
+                >
+                  Visit-Based Plans
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => handleFilterChange("low_visits")}
+                >
+                  Low Visits (≤3)
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => handleFilterChange("exhausted_visits")}
+                >
+                  No Visits Remaining
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -453,15 +520,46 @@ export default function Members() {
                             Paused
                           </Badge>
                         )}
+                        {/* NEW: Visit-based badge */}
+                        {isVisitBased(user) && (
+                          <Badge
+                            variant="outline"
+                            className="bg-blue-100 text-blue-800"
+                          >
+                            Visit-Based
+                          </Badge>
+                        )}
                       </div>
-                      {user.membership.expiry_date && (
-                        <div className="text-xs text-muted-foreground">
-                          Expires: {formatDate(user.membership.expiry_date)}
+
+                      {/* NEW: Visit information display */}
+                      {isVisitBased(user) && user.membership.visit_info ? (
+                        <div className="space-y-1">
+                          <div className="text-xs text-muted-foreground">
+                            Visits: {user.membership.visit_info.used_visits}/
+                            {user.membership.visit_info.total_visits} used
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Remaining:{" "}
+                            {user.membership.visit_info.remaining_visits}
+                          </div>
+                          {hasCheckedInToday(user) && (
+                            <div className="text-xs text-green-600 font-medium">
+                              ✓ Checked in today
+                            </div>
+                          )}
                         </div>
-                      )}
-                      {user.membership.start_date && (
-                        <div className="text-xs text-muted-foreground">
-                          Started: {formatDate(user.membership.start_date)}
+                      ) : (
+                        <div className="space-y-1">
+                          {user.membership.expiry_date && (
+                            <div className="text-xs text-muted-foreground">
+                              Expires: {formatDate(user.membership.expiry_date)}
+                            </div>
+                          )}
+                          {user.membership.start_date && (
+                            <div className="text-xs text-muted-foreground">
+                              Started: {formatDate(user.membership.start_date)}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -520,6 +618,37 @@ export default function Members() {
                         )}
                         <DropdownMenuSeparator />
 
+                        {/* NEW: Check-in action for visit-based memberships */}
+                        {isVisitBased(user) && canCheckin(user) && (
+                          <DropdownMenuItem
+                            onClick={() => handleCheckinUser(user)}
+                            className="text-green-600"
+                            disabled={
+                              checkinLoading && checkinUserId === user.id
+                            }
+                          >
+                            {checkinLoading && checkinUserId === user.id ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Checking in...
+                              </>
+                            ) : (
+                              <>
+                                <UserCheck className="mr-2 h-4 w-4" />
+                                Check In Today
+                              </>
+                            )}
+                          </DropdownMenuItem>
+                        )}
+
+                        {/* Show check-in status for visit-based users */}
+                        {isVisitBased(user) && hasCheckedInToday(user) && (
+                          <DropdownMenuItem disabled>
+                            <UserCheck className="mr-2 h-4 w-4 text-green-600" />
+                            Already Checked In
+                          </DropdownMenuItem>
+                        )}
+
                         {/* Pause/Unpause Actions */}
                         {canPauseMembership(user) && (
                           <DropdownMenuItem
@@ -548,6 +677,17 @@ export default function Members() {
                           >
                             <Clock className="mr-2 h-4 w-4" />
                             View Pause Details
+                          </DropdownMenuItem>
+                        )}
+
+                        {/* NEW: Visit statistics for visit-based users */}
+                        {isVisitBased(user) && (
+                          <DropdownMenuItem
+                            onClick={() => handleViewUser(user)}
+                            className="text-blue-600"
+                          >
+                            <TrendingUp className="mr-2 h-4 w-4" />
+                            Visit Statistics
                           </DropdownMenuItem>
                         )}
 

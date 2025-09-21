@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import { Progress } from "@/components/ui/progress";
 import {
   User,
   Mail,
@@ -19,11 +20,25 @@ import {
   ExternalLink,
   UserCheck,
   Clock,
+  TrendingUp,
+  Pause,
+  Play,
+  AlertTriangle,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import {
   GymUser,
   getMembershipStatusColor,
   formatDate,
+  // NEW: Import visit-based utility functions
+  isVisitBased,
+  canCheckin,
+  hasCheckedInToday,
+  getVisitStatusText,
+  getVisitProgressPercentage,
+  getDaysUntilVisitReset,
+  formatVisitInfo,
 } from "@/stores/usersStore";
 
 interface ViewMemberDialogProps {
@@ -64,9 +79,12 @@ export function ViewMemberDialog({
     }
   };
 
+  // NEW: Get formatted visit information if user has visit-based membership
+  const visitInfo = isVisitBased(user) ? formatVisitInfo(user) : null;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3">
             <Avatar className="h-12 w-12">
@@ -143,6 +161,18 @@ export function ViewMemberDialog({
                 <Badge className={getMembershipStatusBadge()}>
                   {user.membership.is_active ? "Active" : "Inactive"}
                 </Badge>
+                {user.membership.is_paused && (
+                  <Badge className="bg-yellow-100 text-yellow-800">
+                    <Pause className="h-3 w-3 mr-1" />
+                    Paused
+                  </Badge>
+                )}
+                {/* NEW: Visit-based membership badge */}
+                {isVisitBased(user) && (
+                  <Badge className="bg-blue-100 text-blue-800">
+                    Visit-Based
+                  </Badge>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -169,26 +199,210 @@ export function ViewMemberDialog({
                 )}
               </div>
 
-              {user.membership.start_date && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      Start Date
-                    </label>
-                    <div className="text-sm">
-                      {formatDate(user.membership.start_date)}
+              {/* NEW: Visit-based membership details */}
+              {isVisitBased(user) && visitInfo ? (
+                <div className="bg-blue-50 p-4 rounded-lg space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h5 className="font-medium flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4" />
+                      Visit Information
+                    </h5>
+                    {canCheckin(user) ? (
+                      <Badge className="bg-green-100 text-green-800">
+                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                        Can Check In
+                      </Badge>
+                    ) : hasCheckedInToday(user) ? (
+                      <Badge className="bg-blue-100 text-blue-800">
+                        <UserCheck className="h-3 w-3 mr-1" />
+                        Checked In Today
+                      </Badge>
+                    ) : (
+                      <Badge className="bg-gray-100 text-gray-800">
+                        <XCircle className="h-3 w-3 mr-1" />
+                        Cannot Check In
+                      </Badge>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div className="space-y-1">
+                      <div className="text-muted-foreground">Total Visits</div>
+                      <div className="font-medium">
+                        {visitInfo.total_visits}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-muted-foreground">Used</div>
+                      <div className="font-medium">{visitInfo.used_visits}</div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-muted-foreground">Remaining</div>
+                      <div className="font-medium text-green-600">
+                        {visitInfo.remaining_visits}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-muted-foreground">Reset In</div>
+                      <div className="font-medium">
+                        {visitInfo.daysUntilReset} days
+                      </div>
                     </div>
                   </div>
 
-                  {user.membership.expiry_date && (
+                  {/* Visit progress bar */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>Visit Progress</span>
+                      <span>{visitInfo.progress.toFixed(1)}%</span>
+                    </div>
+                    <Progress value={visitInfo.progress} className="h-2" />
+                  </div>
+
+                  {/* Visit status message */}
+                  <div className="text-sm p-2 bg-white rounded border">
+                    {visitInfo.status}
+                  </div>
+
+                  {/* Visit cycle information */}
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <div>
+                      Cycle Start: {formatDate(visitInfo.cycle_start_date)}
+                    </div>
+                    <div>Cycle End: {formatDate(visitInfo.cycle_end_date)}</div>
+                    <div>Next Reset: {visitInfo.resetDate}</div>
+                  </div>
+
+                  {/* Recent visit log */}
+                  {visitInfo.visit_log.length > 0 && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">
+                        Recent Check-ins:
+                      </label>
+                      <div className="flex flex-wrap gap-1">
+                        {visitInfo.visit_log.slice(-5).map((date, index) => (
+                          <Badge
+                            key={index}
+                            variant="outline"
+                            className="text-xs"
+                          >
+                            {formatDate(date)}
+                          </Badge>
+                        ))}
+                        {visitInfo.visit_log.length > 5 && (
+                          <Badge
+                            variant="outline"
+                            className="text-xs text-muted-foreground"
+                          >
+                            +{visitInfo.visit_log.length - 5} more
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                // Time-based membership details
+                user.membership.start_date && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        Expiry Date
+                        <Clock className="h-3 w-3" />
+                        Start Date
                       </label>
                       <div className="text-sm">
-                        {formatDate(user.membership.expiry_date)}
+                        {formatDate(user.membership.start_date)}
+                      </div>
+                    </div>
+
+                    {user.membership.expiry_date && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          Expiry Date
+                        </label>
+                        <div className="text-sm">
+                          {formatDate(user.membership.expiry_date)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              )}
+
+              {/* Pause Information */}
+              {user.membership.is_paused && user.membership.pause_info && (
+                <div className="bg-yellow-50 p-4 rounded-lg space-y-3">
+                  <h5 className="font-medium flex items-center gap-2">
+                    <Pause className="h-4 w-4" />
+                    Pause Information
+                  </h5>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div className="space-y-1">
+                      <div className="text-muted-foreground">Paused On</div>
+                      <div className="font-medium">
+                        {formatDate(user.membership.pause_info.pause_date)}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-muted-foreground">Days Paused</div>
+                      <div className="font-medium">
+                        {user.membership.pause_info.days_paused_so_far} days
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-muted-foreground">
+                        Remaining Days
+                      </div>
+                      <div className="font-medium">
+                        {user.membership.pause_info.remaining_days} days
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-muted-foreground">Total Paused</div>
+                      <div className="font-medium">
+                        {user.membership.pause_info.total_paused_days} days
+                      </div>
+                    </div>
+                  </div>
+                  {user.membership.pause_info.current_end_date && (
+                    <div className="text-sm">
+                      <span className="text-muted-foreground">
+                        Current End Date:{" "}
+                      </span>
+                      <span className="font-medium">
+                        {formatDate(
+                          user.membership.pause_info.current_end_date
+                        )}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Pause history */}
+                  {user.membership.pause_info.pause_history.length > 0 && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">
+                        Pause History:
+                      </label>
+                      <div className="space-y-1">
+                        {user.membership.pause_info.pause_history
+                          .slice(-3)
+                          .map((entry, index) => (
+                            <div
+                              key={index}
+                              className="text-xs bg-white p-2 rounded border"
+                            >
+                              <span className="font-medium capitalize">
+                                {entry.action}
+                              </span>{" "}
+                              on {formatDate(entry.date)}
+                              {entry.reason && (
+                                <div className="text-muted-foreground mt-1">
+                                  Reason: {entry.reason}
+                                </div>
+                              )}
+                            </div>
+                          ))}
                       </div>
                     </div>
                   )}

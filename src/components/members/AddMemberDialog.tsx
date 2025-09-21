@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +19,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, AlertCircle, Upload, X, User } from "lucide-react";
+import {
+  Loader2,
+  AlertCircle,
+  Upload,
+  X,
+  User,
+  TrendingUp,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { CreateUserPayload, useUsersStore } from "@/stores/usersStore";
 import { uploadToCloudinary } from "@/config/cloudinary";
 
@@ -28,7 +37,7 @@ interface AddMemberDialogProps {
   onSuccess?: () => void;
 }
 
-// Updated membership plans with default durations in days
+// Updated membership plans with visit-based indicators
 const membershipPlans = {
   withTrainer: [
     {
@@ -36,30 +45,36 @@ const membershipPlans = {
       name: "Daily (With a Trainer)",
       description: "Daily access with personal trainer",
       defaultDays: 1,
+      isVisitBased: false,
     },
     {
       id: "8",
       name: "Weekly (with a trainer)",
       description: "Weekly plan with personal trainer",
       defaultDays: 6,
+      isVisitBased: false,
     },
     {
       id: "12",
-      name: "3x a week / Month",
-      description: "3 times per week with personal trainer",
-      defaultDays: 12,
+      name: "3x a week / Month (With Trainer)",
+      description: "Visit-based: 12 visits per month with trainer",
+      defaultDays: 30,
+      isVisitBased: true,
+      monthlyVisits: 12,
     },
     {
       id: "10",
       name: "Monthly (With a Trainer)",
       description: "Monthly plan with personal trainer",
       defaultDays: 30,
+      isVisitBased: false,
     },
     {
       id: "11",
       name: "3 Months (With a Trainer)",
       description: "3 Month plan with personal trainer",
       defaultDays: 90,
+      isVisitBased: false,
     },
   ],
   withoutTrainer: [
@@ -68,48 +83,57 @@ const membershipPlans = {
       name: "Daily",
       description: "Daily gym access",
       defaultDays: 1,
+      isVisitBased: false,
     },
     {
       id: "2",
       name: "Weekly",
       description: "Weekly gym access",
       defaultDays: 6,
+      isVisitBased: false,
     },
     {
       id: "3",
       name: "Bi weekly",
       description: "Bi-weekly gym access",
       defaultDays: 12,
+      isVisitBased: false,
     },
     {
       id: "13",
       name: "3x a week / Month",
-      description: "3 times per week ",
-      defaultDays: 12,
+      description: "Visit-based: 12 visits per month",
+      defaultDays: 30,
+      isVisitBased: true,
+      monthlyVisits: 12,
     },
     {
       id: "4",
       name: "Monthly",
       description: "Monthly gym access",
       defaultDays: 30,
+      isVisitBased: false,
     },
     {
       id: "5",
       name: "3 Months",
       description: "3 Month gym access",
       defaultDays: 90,
+      isVisitBased: false,
     },
     {
       id: "6",
       name: "6 Months",
       description: "6-month gym access",
       defaultDays: 180,
+      isVisitBased: false,
     },
     {
       id: "7",
       name: "1 Year",
       description: "Yearly gym access",
       defaultDays: 365,
+      isVisitBased: false,
     },
   ],
 };
@@ -121,13 +145,11 @@ export function AddMemberDialog({
 }: AddMemberDialogProps) {
   const { addUser, loading, error, clearError } = useUsersStore();
 
-  // Get current date in YYYY-MM-DD format
   const getCurrentDate = () => {
     const today = new Date();
     return today.toISOString().split("T")[0];
   };
 
-  // Calculate end date based on start date and days to add
   const calculateEndDate = (startDate: string, daysToAdd: number) => {
     const start = new Date(startDate);
     const end = new Date(start);
@@ -135,7 +157,6 @@ export function AddMemberDialog({
     return end.toISOString().split("T")[0];
   };
 
-  // Get all plans in a flat array for easy lookup
   const allPlans = [
     ...membershipPlans.withTrainer,
     ...membershipPlans.withoutTrainer,
@@ -200,12 +221,10 @@ export function AddMemberDialog({
       errors.last_name = "Last name is required";
     }
 
-    // Check if image is selected but not uploaded
     if (selectedFile && !formData.profile_picture_url) {
       errors.image = "Please upload the selected image before submitting";
     }
 
-    // If membership level is selected, validate end date
     if (formData.level_id) {
       if (!formData.end_date) {
         errors.end_date = "End date is required when assigning membership";
@@ -242,14 +261,12 @@ export function AddMemberDialog({
     setSelectedFile(file);
     setImageUploadError("");
 
-    // Create preview
     const reader = new FileReader();
     reader.onload = () => {
       setImagePreview(reader.result as string);
     };
     reader.readAsDataURL(file);
 
-    // Clear the uploaded URL if a new file is selected
     if (formData.profile_picture_url) {
       handleChange("profile_picture_url", "");
     }
@@ -309,7 +326,6 @@ export function AddMemberDialog({
     }
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleChange = (field: keyof CreateUserPayload, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     // Clear error when user starts typing
@@ -554,9 +570,21 @@ export function AddMemberDialog({
                   {membershipPlans.withTrainer.map((plan) => (
                     <SelectItem key={plan.id} value={plan.id}>
                       <div className="flex flex-col">
-                        <span>{plan.name}</span>
+                        <div className="flex items-center gap-2">
+                          <span>{plan.name}</span>
+                          {plan.isVisitBased && (
+                            <Badge
+                              variant="outline"
+                              className="text-xs bg-blue-100 text-blue-800"
+                            >
+                              Visit-Based
+                            </Badge>
+                          )}
+                        </div>
                         <span className="text-xs text-muted-foreground">
-                          Default: {plan.defaultDays} days
+                          {plan.isVisitBased
+                            ? `${plan.monthlyVisits} visits/month`
+                            : `${plan.defaultDays} days`}
                         </span>
                       </div>
                     </SelectItem>
@@ -569,9 +597,21 @@ export function AddMemberDialog({
                   {membershipPlans.withoutTrainer.map((plan) => (
                     <SelectItem key={plan.id} value={plan.id}>
                       <div className="flex flex-col">
-                        <span>{plan.name}</span>
+                        <div className="flex items-center gap-2">
+                          <span>{plan.name}</span>
+                          {plan.isVisitBased && (
+                            <Badge
+                              variant="outline"
+                              className="text-xs bg-blue-100 text-blue-800"
+                            >
+                              Visit-Based
+                            </Badge>
+                          )}
+                        </div>
                         <span className="text-xs text-muted-foreground">
-                          Default: {plan.defaultDays} days
+                          {plan.isVisitBased
+                            ? `${plan.monthlyVisits} visits/month`
+                            : `${plan.defaultDays} days`}
                         </span>
                       </div>
                     </SelectItem>
@@ -583,13 +623,27 @@ export function AddMemberDialog({
             {formData.level_id && (
               <>
                 {selectedPlan && (
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
-                    <p className="text-sm text-blue-800">
-                      <strong>Selected Plan:</strong> {selectedPlan.name}
-                    </p>
-                    <p className="text-xs text-blue-600 mt-1">
-                      Default duration: {selectedPlan.defaultDays} days. You can
-                      modify the end date below if needed.
+                  <div
+                    className={`p-3 border rounded-md ${
+                      selectedPlan.isVisitBased
+                        ? "bg-blue-50 border-blue-200"
+                        : "bg-blue-50 border-blue-200"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <p className="text-sm font-medium">
+                        Selected Plan: {selectedPlan.name}
+                      </p>
+                      {selectedPlan.isVisitBased && (
+                        <Badge className="bg-blue-100 text-blue-800">
+                          Visit-Based
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {selectedPlan.isVisitBased
+                        ? `Visit-based plan with ${selectedPlan.monthlyVisits} visits per billing cycle. Visits will reset monthly based on the start date.`
+                        : `Time-based plan with ${selectedPlan.defaultDays} days duration. You can modify the end date below if needed.`}
                     </p>
                   </div>
                 )}
@@ -624,10 +678,39 @@ export function AddMemberDialog({
                       </p>
                     )}
                     <p className="text-xs text-muted-foreground">
-                      Auto-calculated based on plan. You can modify if needed.
+                      {selectedPlan?.isVisitBased
+                        ? "For visit-based plans, this sets the billing cycle duration."
+                        : "Auto-calculated based on plan. You can modify if needed."}
                     </p>
                   </div>
                 </div>
+
+                {/* Additional Info for Visit-Based Plans */}
+                {selectedPlan?.isVisitBased && (
+                  <div className="bg-amber-50 p-3 rounded-md border border-amber-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <TrendingUp className="h-4 w-4 text-amber-600" />
+                      <p className="text-sm font-medium text-amber-800">
+                        Visit-Based Plan Information
+                      </p>
+                    </div>
+                    <div className="text-xs text-amber-700 space-y-1">
+                      <p>
+                        • This plan includes {selectedPlan.monthlyVisits} visits
+                        per billing cycle
+                      </p>
+                      <p>
+                        • Visits will reset automatically based on the start
+                        date
+                      </p>
+                      <p>• Unused visits do not carry over to the next cycle</p>
+                      <p>• Members can only check in once per day</p>
+                      <p>
+                        • Visit tracking begins immediately upon member creation
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 <div className="text-sm text-muted-foreground">
                   A QR code will be automatically generated for this member when
