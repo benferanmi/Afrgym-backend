@@ -167,6 +167,7 @@ export function AddMemberDialog({
     email: "",
     first_name: "",
     last_name: "",
+    phone: "",
     level_id: undefined,
     start_date: getCurrentDate(),
     end_date: "",
@@ -186,6 +187,7 @@ export function AddMemberDialog({
     setFormData({
       username: "",
       email: "",
+      phone: "",
       first_name: "",
       last_name: "",
       level_id: undefined,
@@ -219,6 +221,10 @@ export function AddMemberDialog({
 
     if (!formData.last_name?.trim()) {
       errors.last_name = "Last name is required";
+    }
+
+    if (!formData.phone?.trim()) {
+      errors.phone = "Phone number is required";
     }
 
     if (selectedFile && !formData.profile_picture_url) {
@@ -486,21 +492,6 @@ export function AddMemberDialog({
           {/* Basic Information */}
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Username *</Label>
-              <Input
-                id="username"
-                value={formData.username}
-                onChange={(e) => handleChange("username", e.target.value)}
-                placeholder="Enter username"
-              />
-              {formErrors.username && (
-                <p className="text-sm text-destructive">
-                  {formErrors.username}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
               <Label htmlFor="email">Email *</Label>
               <Input
                 id="email"
@@ -512,6 +503,35 @@ export function AddMemberDialog({
               {formErrors.email && (
                 <p className="text-sm text-destructive">{formErrors.email}</p>
               )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="username">Username *</Label>
+                <Input
+                  id="username"
+                  value={formData.username}
+                  onChange={(e) => handleChange("username", e.target.value)}
+                  placeholder="Enter username"
+                />
+                {formErrors.username && (
+                  <p className="text-sm text-destructive">
+                    {formErrors.username}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone Number *</Label>
+                <Input
+                  id="phone"
+                  value={formData.phone}
+                  onChange={(e) => handleChange("phone", e.target.value)}
+                  placeholder="8100110011"
+                />
+                {formErrors.phone && (
+                  <p className="text-sm text-destructive">{formErrors.phone}</p>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

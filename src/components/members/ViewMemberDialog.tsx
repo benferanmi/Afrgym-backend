@@ -128,6 +128,13 @@ export function ViewMemberDialog({
                 </label>
                 <div className="text-sm">{user.last_name}</div>
               </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-muted-foreground">
+                  Phone Number
+                </label>
+                <div className="text-sm">{user.phone || "N/A"}</div>
+              </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground flex items-center gap-1">
                   <Mail className="h-3 w-3" />

@@ -11,6 +11,7 @@ export interface GymUser {
   last_name: string;
   display_name: string;
   registered: string;
+  phone: string;
   profile_picture_url: string;
   membership: {
     status?: string;
@@ -64,6 +65,7 @@ export interface CreateUserPayload {
   username: string;
   email: string;
   first_name: string;
+  phone: string;
   last_name: string;
   level_id?: number;
   start_date?: string;
@@ -75,6 +77,7 @@ export interface UpdateUserPayload {
   username?: string;
   email?: string;
   first_name?: string;
+  phone?: string;
   last_name?: string;
   level_id?: number;
   start_date?: string;

@@ -500,7 +500,7 @@ export default function Members() {
                           {user.email}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          @{user.username}
+                          @{user.username} <br></br> {user?.phone ? user.phone : "No Phone"}
                         </div>
                       </div>
                     </div>

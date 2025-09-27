@@ -178,6 +178,7 @@ export function EditMemberDialog({
     email: "",
     first_name: "",
     last_name: "",
+    phone: "",
     level_id: undefined,
     start_date: "",
     end_date: "",
@@ -210,6 +211,7 @@ export function EditMemberDialog({
         email: user.email || "",
         first_name: user.first_name || "",
         last_name: user.last_name || "",
+        phone: user.phone || "",
         level_id: user.membership?.level_id
           ? parseInt(user.membership.level_id)
           : undefined,
@@ -259,6 +261,10 @@ export function EditMemberDialog({
 
     if (selectedFile && !formData.profile_picture_url) {
       errors.image = "Please upload the selected image before submitting";
+    }
+
+    if (!formData.phone?.trim()) {
+      errors.phone = "Phone number is required";
     }
 
     // Membership validation
@@ -378,6 +384,10 @@ export function EditMemberDialog({
       }
       if (formData.last_name !== user.last_name) {
         updatePayload.last_name = formData.last_name;
+      }
+
+      if (formData.phone !== user.phone) {
+        updatePayload.phone = formData.phone;
       }
 
       // Profile picture - only if changed
@@ -707,19 +717,6 @@ export function EditMemberDialog({
           {/* Basic Information */}
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                readOnly
-                value={formData.username}
-                className="bg-muted text-muted-foreground cursor-not-allowed"
-              />
-              <p className="text-xs text-muted-foreground">
-                Username cannot be changed
-              </p>
-            </div>
-
-            <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
@@ -731,6 +728,34 @@ export function EditMemberDialog({
               {formErrors.email && (
                 <p className="text-sm text-destructive">{formErrors.email}</p>
               )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="username">Username</Label>
+                <Input
+                  id="username"
+                  readOnly
+                  value={formData.username}
+                  className="bg-muted text-muted-foreground cursor-not-allowed"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Username cannot be changed
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone Number *</Label>
+                <Input
+                  id="phone"
+                  value={formData.phone}
+                  onChange={(e) => handleChange("phone", e.target.value)}
+                  placeholder="8100110011"
+                />
+                {formErrors.phone && (
+                  <p className="text-sm text-destructive">{formErrors.phone}</p>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
