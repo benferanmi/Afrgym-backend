@@ -563,13 +563,13 @@ export const useUsersStore = create<UsersState>((set, get) => ({
         return response.user;
       } else {
         // Capture the specific error message from the response
+
         const errorMessage = response.message || "Failed to create user";
         set({ loading: false, error: errorMessage });
         throw new Error(errorMessage);
       }
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to create user";
+      const errorMessage = error?.message || "Failed to create user";
       set({ loading: false, error: errorMessage });
 
       if (!isTokenInvalidError(error)) {
@@ -603,13 +603,12 @@ export const useUsersStore = create<UsersState>((set, get) => ({
 
         return response.user;
       } else {
-        const errorMessage = response.message || "Failed to create user";
+        const errorMessage = response?.message || "Failed to update user";
         set({ loading: false, error: errorMessage });
         throw new Error(errorMessage);
       }
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to update user";
+      const errorMessage = error?.message || "Failed to update user";
       set({ loading: false, error: errorMessage });
 
       if (!isTokenInvalidError(error)) {
@@ -638,13 +637,12 @@ export const useUsersStore = create<UsersState>((set, get) => ({
           error: null,
         });
       } else {
-        const errorMessage = response.message || "Failed to create user";
+        const errorMessage = response?.message || "Failed to delete user";
         set({ loading: false, error: errorMessage });
         throw new Error(errorMessage);
       }
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to delete user";
+      const errorMessage = error?.message || "Failed to delete user";
       set({ loading: false, error: errorMessage });
 
       if (!isTokenInvalidError(error)) {
@@ -657,9 +655,8 @@ export const useUsersStore = create<UsersState>((set, get) => ({
 
   setSearchTerm: (term) => {
     set({ searchTerm: term });
-    // Automatically fetch users when search term changes
     const { fetchUsers } = get();
-    fetchUsers(1, term); // Reset to page 1 when searching
+    fetchUsers(1, term);
   },
 
   setFilterStatus: (status) => set({ filterStatus: status }),

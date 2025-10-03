@@ -334,13 +334,11 @@ export function AddMemberDialog({
 
   const handleChange = (field: keyof CreateUserPayload, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
-    // Clear error when user starts typing
     if (formErrors[field]) {
       setFormErrors((prev) => ({ ...prev, [field]: "" }));
     }
   };
 
-  // Handle membership plan selection and auto-calculate end date
   const handleMembershipChange = (value: string) => {
     if (value === "none") {
       handleChange("level_id", undefined);
@@ -348,7 +346,6 @@ export function AddMemberDialog({
     } else {
       handleChange("level_id", value);
 
-      // Find the selected plan and calculate default end date
       const selectedPlan = allPlans.find((plan) => plan.id === value);
       if (selectedPlan) {
         const defaultEndDate = calculateEndDate(
@@ -367,12 +364,10 @@ export function AddMemberDialog({
     onOpenChange(isOpen);
   };
 
-  // Get selected plan info for display
   const selectedPlan = formData.level_id
     ? allPlans.find((plan) => plan.id === formData.level_id?.toString())
     : null;
 
-  // Check if form can be submitted (no pending image upload)
   const canSubmit = !selectedFile || formData.profile_picture_url;
 
   return (
