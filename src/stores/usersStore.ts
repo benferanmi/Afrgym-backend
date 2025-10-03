@@ -562,7 +562,10 @@ export const useUsersStore = create<UsersState>((set, get) => ({
         });
         return response.user;
       } else {
-        throw new Error("Failed to create user");
+        // Capture the specific error message from the response
+        const errorMessage = response.message || "Failed to create user";
+        set({ loading: false, error: errorMessage });
+        throw new Error(errorMessage);
       }
     } catch (error) {
       const errorMessage =
@@ -600,7 +603,9 @@ export const useUsersStore = create<UsersState>((set, get) => ({
 
         return response.user;
       } else {
-        throw new Error("Failed to update user");
+        const errorMessage = response.message || "Failed to create user";
+        set({ loading: false, error: errorMessage });
+        throw new Error(errorMessage);
       }
     } catch (error) {
       const errorMessage =
@@ -633,7 +638,9 @@ export const useUsersStore = create<UsersState>((set, get) => ({
           error: null,
         });
       } else {
-        throw new Error("Failed to delete user");
+        const errorMessage = response.message || "Failed to create user";
+        set({ loading: false, error: errorMessage });
+        throw new Error(errorMessage);
       }
     } catch (error) {
       const errorMessage =
