@@ -109,7 +109,7 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
 
         try {
-          const response: LoginResponse = await apiCall("/auth/login", {
+          const response: LoginResponse = await apiCall("/auth/login/gym-one", {
             method: "POST",
             body: JSON.stringify({ username, password }),
           });
