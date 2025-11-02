@@ -12,6 +12,7 @@ import Memberships from "./pages/Memberships";
 import EmailCenter from "./pages/EmailCenter";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
+import Products from "./pages/Products";
 
 const queryClient = new QueryClient();
 
@@ -62,6 +63,14 @@ const App = () => (
                 <EmailCenter />
               </ProtectedRoute>
             }
+          />
+          <Route 
+          path="/products"
+          element={
+            <ProtectedRoute>
+              <Products />
+            </ProtectedRoute>
+          }
           />
           {/* <Route path="/settings" element={
             <ProtectedRoute>
