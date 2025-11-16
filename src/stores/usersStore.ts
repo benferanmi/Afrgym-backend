@@ -364,6 +364,7 @@ interface UsersState {
     search?: string,
     perPage?: number
   ) => Promise<void>;
+  fetchAllUsers: (page?: number, search?: string, perPage?: number) => Promise<void>; 
   fetchSingleUser: (id: number) => Promise<GymUser>;
   addUser: (user: CreateUserPayload) => Promise<GymUser>;
   updateUser: (id: number, user: UpdateUserPayload) => Promise<GymUser>;
@@ -555,6 +556,48 @@ export const useUsersStore = create<UsersState>((set, get) => ({
       }
     }
   },
+
+  fetchAllUsers: async (page = 1, search = "", perPage = 20) => {
+  set({ loading: true, error: null });
+
+  try {
+    const queryParams = new URLSearchParams();
+    queryParams.append("page", page.toString());
+    queryParams.append("per_page", perPage.toString());
+
+    if (search) {
+      queryParams.append("search", search);
+    }
+
+    // Fetch from /users instead of /users/gym-one to get ALL users
+    const response: UsersResponse = await apiCall(
+      `/users?${queryParams}`
+    );
+
+    set({
+      users: response.users,
+      total: response.total,
+      currentPage: response.page,
+      totalPages: response.total_pages,
+      loading: false,
+      error: null,
+    });
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Failed to fetch users";
+    set({
+      loading: false,
+      error: errorMessage,
+      users: [],
+      total: 0,
+      totalPages: 1,
+    });
+
+    if (!isTokenInvalidError(error)) {
+      throw new Error(errorMessage);
+    }
+  }
+},
 
   fetchSingleUser: async (id: number) => {
     set({ loading: true, error: null });

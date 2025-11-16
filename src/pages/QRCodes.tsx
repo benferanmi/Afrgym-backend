@@ -26,7 +26,6 @@ import {
   hasQRCode,
   formatDate,
   formatQRCodeStatistics,
-  // Import visit-based utilities
   isVisitBased,
   getMembershipStatusDisplay,
   getMembershipStatusColor,
@@ -35,6 +34,8 @@ import { QRScanner } from "@/components/QRScanner";
 import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
 import { Separator } from "@/components/ui/separator";
 
+const BASE_URL = "https://afrgym.com.ng/wp-json/gym-admin/v1";
+
 export default function QRCodes() {
   const {
     users,
@@ -42,9 +43,8 @@ export default function QRCodes() {
     error,
     qrCodeStatistics,
     qrCodeLoading,
-    fetchUsers,
-    lookupUserByQRCode,
-    lookupAndCheckinByQRCode,
+    fetchAllUsers, // Changed from fetchUsers to fetchAllUsers
+    lookupUserByQRCode, // Changed from lookupAndCheckinByQRCode
     getQRCodeStatistics,
     clearError,
     generateUserQRCode,
@@ -55,13 +55,12 @@ export default function QRCodes() {
   const [lookupResult, setLookupResult] = useState(null);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState("");
-  const [showCheckinOption, setShowCheckinOption] = useState(false);
 
-  // Load initial data
+  // Load initial data - fetch ALL users for cross-gym functionality
   useEffect(() => {
-    fetchUsers();
+    fetchAllUsers(); // Changed from fetchUsers
     getQRCodeStatistics();
-  }, [fetchUsers, getQRCodeStatistics]);
+  }, [fetchAllUsers, getQRCodeStatistics]);
 
   // Filter users based on search term
   const filteredUsers = users.filter(
@@ -73,7 +72,8 @@ export default function QRCodes() {
         user.qr_code.unique_id.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const handleQRCodeLookup = async (qrCodeValue, performCheckin = false) => {
+  // UPDATED: Lookup only, no auto-check-in
+  const handleQRCodeLookup = async (qrCodeValue) => {
     if (!qrCodeValue.trim()) return;
 
     setLookupLoading(true);
@@ -81,20 +81,12 @@ export default function QRCodes() {
     setLookupResult(null);
 
     try {
-      const result = await lookupAndCheckinByQRCode(
-        qrCodeValue.trim(),
-        performCheckin
-      );
+      // Use lookupUserByQRCode instead of lookupAndCheckinByQRCode
+      const result = await lookupUserByQRCode(qrCodeValue.trim());
       setLookupResult(result);
 
       if (!result.user_found) {
         setLookupError("No user found with this QR code");
-      } else {
-        // Show check-in option if user is visit-based and can check in
-        setShowCheckinOption(
-          result.user.membership?.is_visit_based &&
-            result.visit_status?.can_check_in
-        );
       }
     } catch (err) {
       setLookupError(err.message || "Failed to lookup QR code");
@@ -103,17 +95,63 @@ export default function QRCodes() {
     }
   };
 
+  // NEW: Separate manual check-in handler
   const handleCheckinUser = async () => {
-    if (!lookupResult?.user?.unique_id) return;
+    if (!lookupResult?.user?.id) return;
 
     try {
       setLookupLoading(true);
-      const result = await lookupAndCheckinByQRCode(
-        lookupResult.user.unique_id,
-        true // Perform check-in
+      
+      // Get auth token
+      const authState = localStorage.getItem("gym-auth-storage");
+      let token = null;
+      if (authState) {
+        try {
+          const parsedAuth = JSON.parse(authState);
+          token = parsedAuth.state?.token;
+        } catch (error) {
+          console.warn("Failed to parse auth token:", error);
+        }
+      }
+
+      // Call check-in endpoint directly
+      const response = await fetch(
+        `${BASE_URL}/checkin/${lookupResult.user.id}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token && { Authorization: `Bearer ${token}` }),
+          },
+        }
       );
-      setLookupResult(result);
-      setShowCheckinOption(false);
+
+      if (!response.ok) {
+        throw new Error("Failed to check in user");
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Update the lookup result with new visit info
+        setLookupResult({
+          ...lookupResult,
+          user: {
+            ...lookupResult.user,
+            membership: {
+              ...lookupResult.user.membership,
+              visit_info: data.visit_info,
+            },
+          },
+          visit_status: {
+            can_check_in: false,
+            already_checked_in_today: true,
+          },
+        });
+
+        // Show success message
+        alert(`Check-in successful! ${data.visit_info.remaining_visits} visits remaining.`);
+      }
     } catch (err) {
       setLookupError(err.message || "Failed to check in user");
     } finally {
@@ -130,14 +168,12 @@ export default function QRCodes() {
     } else {
       setLookupResult(null);
       setLookupError("");
-      setShowCheckinOption(false);
     }
   };
 
   const handleGenerateQR = async (userId) => {
     try {
       await generateUserQRCode(userId);
-      // Refresh statistics after generating
       await getQRCodeStatistics();
     } catch (err) {
       console.error("Failed to generate QR code:", err);
@@ -164,16 +200,13 @@ export default function QRCodes() {
   const handleQRScanned = (scannedData) => {
     console.log("QR Code scanned:", scannedData);
 
-    // Extract the 8-digit code from scanned data
     let qrCode = scannedData;
 
-    // If it's a URL, extract the code from it
     if (scannedData.includes("/")) {
       const urlParts = scannedData.split("/");
       qrCode = urlParts[urlParts.length - 1];
     }
 
-    // Validate that it's an 8-digit alphanumeric code
     if (/^[A-Za-z0-9]{8}$/.test(qrCode)) {
       setSearchTerm(qrCode);
       handleQRCodeLookup(qrCode);
@@ -188,18 +221,6 @@ export default function QRCodes() {
     setScannerActive(false);
   };
 
-  // Get access status color and icon
-  const getAccessStatusDisplay = (result) => {
-    if (!result.access_status) return { color: "gray", icon: AlertCircle };
-
-    const canAccess = result.access_status.can_access;
-    return {
-      color: canAccess ? "green" : "red",
-      icon: canAccess ? CheckCircle2 : XCircle,
-    };
-  };
-
-  // Format statistics for display
   const statsDisplay = qrCodeStatistics
     ? formatQRCodeStatistics(qrCodeStatistics)
     : null;
@@ -210,7 +231,7 @@ export default function QRCodes() {
         <div>
           <h1 className="text-3xl font-bold">QR Code Management</h1>
           <p className="text-muted-foreground mt-2">
-            Generate and manage member QR codes, scan for access control
+            Generate and manage member QR codes, scan for access control (cross-gym enabled)
           </p>
         </div>
         <div className="flex gap-2">
@@ -221,7 +242,6 @@ export default function QRCodes() {
         </div>
       </div>
 
-      {/* Error Display */}
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -486,7 +506,7 @@ export default function QRCodes() {
                   </div>
                 )}
 
-                {/* Visit Status and Check-in */}
+                {/* Visit Status and Check-in Button */}
                 {lookupResult.visit_status && (
                   <div className="space-y-3">
                     <h4 className="font-medium flex items-center gap-2">
@@ -519,8 +539,10 @@ export default function QRCodes() {
                         )}
                       </div>
 
-                      {showCheckinOption &&
-                        lookupResult.visit_status.can_check_in && (
+                      {/* Show check-in button for visit-based users who can check in */}
+                      {lookupResult.user.membership.is_visit_based &&
+                        lookupResult.visit_status.can_check_in &&
+                        !lookupResult.visit_status.already_checked_in_today && (
                           <Button
                             onClick={handleCheckinUser}
                             disabled={lookupLoading}
@@ -564,7 +586,7 @@ export default function QRCodes() {
       {/* Search and User List */}
       <Card>
         <CardHeader>
-          <CardTitle>Member QR Codes</CardTitle>
+          <CardTitle>Member QR Codes (All Gyms)</CardTitle>
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
