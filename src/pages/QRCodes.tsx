@@ -43,8 +43,8 @@ export default function QRCodes() {
     error,
     qrCodeStatistics,
     qrCodeLoading,
-    fetchAllUsers, // Changed from fetchUsers to fetchAllUsers
-    lookupUserByQRCode, // Changed from lookupAndCheckinByQRCode
+    fetchUsers, // Back to fetchUsers for gym-specific list
+    lookupUserByQRCode, // Lookup only, works cross-gym
     getQRCodeStatistics,
     clearError,
     generateUserQRCode,
@@ -56,13 +56,13 @@ export default function QRCodes() {
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState("");
 
-  // Load initial data - fetch ALL users for cross-gym functionality
+  // Load initial data - fetch gym-specific users for the list
   useEffect(() => {
-    fetchAllUsers(); // Changed from fetchUsers
+    fetchUsers(); // Gym-specific users only
     getQRCodeStatistics();
-  }, [fetchAllUsers, getQRCodeStatistics]);
+  }, [fetchUsers, getQRCodeStatistics]);
 
-  // Filter users based on search term
+  // Filter users based on search term (only searches gym-specific users in list)
   const filteredUsers = users.filter(
     (user) =>
       user.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -72,7 +72,7 @@ export default function QRCodes() {
         user.qr_code.unique_id.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  // UPDATED: Lookup only, no auto-check-in
+  // QR lookup works cross-gym (doesn't auto-check-in)
   const handleQRCodeLookup = async (qrCodeValue) => {
     if (!qrCodeValue.trim()) return;
 
@@ -81,7 +81,7 @@ export default function QRCodes() {
     setLookupResult(null);
 
     try {
-      // Use lookupUserByQRCode instead of lookupAndCheckinByQRCode
+      // This lookup works across ALL gyms via backend
       const result = await lookupUserByQRCode(qrCodeValue.trim());
       setLookupResult(result);
 
@@ -95,13 +95,13 @@ export default function QRCodes() {
     }
   };
 
-  // NEW: Separate manual check-in handler
+  // Manual check-in (works cross-gym)
   const handleCheckinUser = async () => {
     if (!lookupResult?.user?.id) return;
 
     try {
       setLookupLoading(true);
-      
+
       // Get auth token
       const authState = localStorage.getItem("gym-auth-storage");
       let token = null;
@@ -114,7 +114,7 @@ export default function QRCodes() {
         }
       }
 
-      // Call check-in endpoint directly
+      // Call check-in endpoint directly (works cross-gym)
       const response = await fetch(
         `${BASE_URL}/checkin/${lookupResult.user.id}`,
         {
@@ -150,7 +150,9 @@ export default function QRCodes() {
         });
 
         // Show success message
-        alert(`Check-in successful! ${data.visit_info.remaining_visits} visits remaining.`);
+        alert(
+          `Check-in successful! ${data.visit_info.remaining_visits} visits remaining.`
+        );
       }
     } catch (err) {
       setLookupError(err.message || "Failed to check in user");
@@ -162,9 +164,9 @@ export default function QRCodes() {
   const handleSearch = (value) => {
     setSearchTerm(value);
 
-    // If the search looks like a QR code (8 digits alphanumeric), also do a lookup
+    // If the search looks like a QR code (8 digits alphanumeric), do cross-gym lookup
     if (value.length === 8 && /^[A-Za-z0-9]{8}$/.test(value)) {
-      handleQRCodeLookup(value);
+      handleQRCodeLookup(value); // This works across gyms
     } else {
       setLookupResult(null);
       setLookupError("");
@@ -209,7 +211,7 @@ export default function QRCodes() {
 
     if (/^[A-Za-z0-9]{8}$/.test(qrCode)) {
       setSearchTerm(qrCode);
-      handleQRCodeLookup(qrCode);
+      handleQRCodeLookup(qrCode); // Cross-gym lookup
       console.log("Valid QR code detected:", qrCode);
     } else {
       setLookupError(
@@ -231,7 +233,7 @@ export default function QRCodes() {
         <div>
           <h1 className="text-3xl font-bold">QR Code Management</h1>
           <p className="text-muted-foreground mt-2">
-            Generate and manage member QR codes, scan for access control (cross-gym enabled)
+            Generate and manage member QR codes, scan for access control
           </p>
         </div>
         <div className="flex gap-2">
@@ -309,7 +311,7 @@ export default function QRCodes() {
         </Card>
       </div>
 
-      {/* Enhanced QR Code Lookup Result */}
+      {/* Enhanced QR Code Lookup Result - Shows ANY user from cross-gym lookup */}
       {lookupResult && (
         <Card
           className={`border-2 ${
@@ -583,10 +585,10 @@ export default function QRCodes() {
         </Alert>
       )}
 
-      {/* Search and User List */}
+      {/* Search and User List - Shows ONLY gym-specific users */}
       <Card>
         <CardHeader>
-          <CardTitle>Member QR Codes (All Gyms)</CardTitle>
+          <CardTitle>Member QR Codes</CardTitle>
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
