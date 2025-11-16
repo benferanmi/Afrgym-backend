@@ -3,6 +3,29 @@ import { useEffect } from "react";
 
 const BASE_URL = "https://afrgym.com.ng/wp-json/gym-admin/v1";
 
+// Recipient statistics for email sending
+export interface RecipientStats {
+  all: number;
+  active: number;
+  inactive: number;
+  expiring_7days: number;
+  expired: number;
+  expiring_30days: number;
+  paused: number;
+  by_membership: Array<{
+    id: number;
+    name: string;
+    count: number;
+  }>;
+}
+
+export interface RecipientStatsResponse {
+  success: boolean;
+  gym_identifier: string;
+  gym_name: string;
+  stats: RecipientStats;
+}
+
 export interface GymUser {
   id: number;
   username: string;
@@ -38,7 +61,7 @@ export interface GymUser {
         reason?: string;
       }>;
     };
-    // NEW: Visit-based membership fields
+    // Visit-based membership fields
     is_visit_based?: boolean;
     visit_info?: {
       total_visits: number;
@@ -83,7 +106,7 @@ export interface UpdateUserPayload {
   start_date?: string;
   end_date?: string;
   profile_picture_url?: string;
-  // NEW: Visit-based update options
+  // Visit-based update options
   checkin_today?: boolean;
 }
 
@@ -134,7 +157,7 @@ export interface PauseStatusResponse {
   }>;
 }
 
-// NEW: Visit-based interfaces
+// Visit-based interfaces
 export interface VisitInfoResponse {
   success: boolean;
   user_id: number;
@@ -206,7 +229,7 @@ export interface QRCodeUser {
     plan: string;
     status: string;
     expiry_date: string | null;
-    // NEW: Visit-based info in QR lookup
+    // Visit-based info in QR lookup
     is_visit_based?: boolean;
     visit_info?: {
       remaining_visits: number;
@@ -222,7 +245,7 @@ export interface QRCodeLookupResponse {
   success: boolean;
   user_found: boolean;
   user: QRCodeUser;
-  // NEW: Visit status in QR lookup
+  // Visit status in QR lookup
   visit_status?: {
     can_check_in: boolean;
     already_checked_in_today: boolean;
@@ -250,7 +273,7 @@ export interface QRCodeStatistics {
   };
 }
 
-// NEW: Visit-based statistics interfaces
+// Visit-based statistics interfaces
 export interface VisitBasedStats {
   success: boolean;
   visit_based_stats: {
@@ -328,9 +351,12 @@ interface UsersState {
   qrCodeStatistics: QRCodeStatistics["statistics"] | null;
   qrCodeLoading: boolean;
 
-  // NEW: Visit-based statistics state
+  // Visit-based statistics state
   visitBasedStats: VisitBasedStats["visit_based_stats"] | null;
   visitStatsLoading: boolean;
+
+  recipientStats: RecipientStats | null;
+  recipientStatsLoading: boolean;
 
   // Actions
   fetchUsers: (
@@ -368,7 +394,7 @@ interface UsersState {
   searchUsersByQRCode: (qrCode: string, page?: number) => Promise<void>;
   getQRCodeStatistics: () => Promise<QRCodeStatistics["statistics"]>;
 
-  // NEW: Visit-based Actions
+  // Visit-based Actions
   getUserVisits: (id: number) => Promise<VisitInfoResponse>;
   updateUserVisits: (
     id: number,
@@ -377,6 +403,7 @@ interface UsersState {
   checkinUser: (id: number) => Promise<CheckinResponse>;
   getVisitBasedStats: () => Promise<VisitBasedStats["visit_based_stats"]>;
   getLowVisitUsers: (threshold?: number) => Promise<LowVisitUsersResponse>;
+  fetchRecipientStats: () => Promise<RecipientStats>;
 }
 
 // Helper function to check if error is related to invalid token
@@ -484,6 +511,8 @@ export const useUsersStore = create<UsersState>((set, get) => ({
   qrCodeLoading: false,
   visitBasedStats: null,
   visitStatsLoading: false,
+  recipientStats: null,
+  recipientStatsLoading: false,
 
   fetchUsers: async (page = 1, search = "", perPage = 20) => {
     set({ loading: true, error: null });
@@ -497,7 +526,9 @@ export const useUsersStore = create<UsersState>((set, get) => ({
         queryParams.append("search", search);
       }
 
-      const response: UsersResponse = await apiCall(`/users/gym-one?${queryParams}`);
+      const response: UsersResponse = await apiCall(
+        `/users/gym-one?${queryParams}`
+      );
 
       set({
         users: response.users,
@@ -692,7 +723,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
           !user.membership.is_paused) ||
         (filterStatus === "no_membership" &&
           user.membership.status === "no_membership") ||
-        // NEW: Visit-based filters
+        // Visit-based filters
         (filterStatus === "visit_based" && user.membership.is_visit_based) ||
         (filterStatus === "low_visits" &&
           user.membership.is_visit_based &&
@@ -975,7 +1006,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
     }
   },
 
-  // NEW: Combined lookup and check-in action
+  // Combined lookup and check-in action
   lookupAndCheckinByQRCode: async (
     uniqueId: string,
     performCheckin = false
@@ -1080,7 +1111,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
     }
   },
 
-  // NEW: Visit-based Actions
+  // Visit-based Actions
   getUserVisits: async (id: number) => {
     set({ loading: true, error: null });
 
@@ -1308,6 +1339,38 @@ export const useUsersStore = create<UsersState>((set, get) => ({
       throw new Error(errorMessage);
     }
   },
+
+  fetchRecipientStats: async () => {
+    set({ recipientStatsLoading: true, error: null });
+
+    try {
+      const response: RecipientStatsResponse = await apiCall(
+        "/users/recipient-stats"
+      );
+
+      if (response.success) {
+        set({
+          recipientStats: response.stats,
+          recipientStatsLoading: false,
+          error: null,
+        });
+        return response.stats;
+      } else {
+        throw new Error("Failed to fetch recipient statistics");
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to fetch recipient statistics";
+      set({ recipientStatsLoading: false, error: errorMessage });
+
+      if (!isTokenInvalidError(error)) {
+        throw new Error(errorMessage);
+      }
+      throw new Error(errorMessage);
+    }
+  },
 }));
 
 // Utility functions for easier usage
@@ -1323,7 +1386,7 @@ export const getMembershipStatusDisplay = (user: GymUser): string => {
     return "No Membership";
   }
 
-  // NEW: Handle visit-based status
+  // Handle visit-based status
   if (user.membership.is_visit_based && user.membership.visit_info) {
     if (user.membership.visit_info.remaining_visits <= 0) {
       return `${user.membership.level_name} (No Visits)`;
@@ -1347,7 +1410,7 @@ export const getMembershipStatusColor = (user: GymUser): string => {
     return "gray";
   }
 
-  // NEW: Handle visit-based color coding
+  // Handle visit-based color coding
   if (user.membership.is_visit_based && user.membership.visit_info) {
     if (user.membership.visit_info.remaining_visits <= 0) {
       return "red";
@@ -1420,7 +1483,7 @@ export const formatPauseHistory = (
   }));
 };
 
-// NEW: Visit-based utility functions
+// Visit-based utility functions
 export const isVisitBased = (user: GymUser): boolean => {
   return user.membership.is_visit_based === true;
 };

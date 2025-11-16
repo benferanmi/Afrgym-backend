@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { create } from "zustand";
 
 const BASE_URL = "https://afrgym.com.ng/wp-json/gym-admin/v1";
@@ -16,7 +17,22 @@ export interface EmailTemplate {
 export interface EmailTemplates {
   [key: string]: EmailTemplate;
 }
-
+export interface BulkEmailByCategoryPayload {
+  recipient_type:
+    | "all"
+    | "active"
+    | "inactive"
+    | "expired"
+    | "expiring_7days"
+    | "expiring_30days"
+    | "paused"
+    | "membership";
+  membership_level_ids?: string[];
+  template?: string;
+  custom_subject?: string;
+  custom_content?: string;
+  custom_data?: Record<string, any>;
+}
 // Email Payload Interfaces
 export interface SingleEmailPayload {
   user_id: number;
@@ -252,6 +268,9 @@ interface EmailState {
   fetchEmailStats: (period?: number) => Promise<void>;
   clearError: () => void;
   resetLogs: () => void;
+  sendBulkEmailByCategory: (
+    payload: BulkEmailByCategoryPayload
+  ) => Promise<BulkEmailResponse>;
 }
 
 export const useEmailStore = create<EmailState>((set, get) => ({
@@ -330,6 +349,42 @@ export const useEmailStore = create<EmailState>((set, get) => ({
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to send email";
+      set({ sendingEmail: false, error: errorMessage });
+      throw new Error(errorMessage);
+    }
+  },
+
+  sendBulkEmailByCategory: async (payload: BulkEmailByCategoryPayload) => {
+    set({ sendingEmail: true, error: null });
+
+    try {
+      const response: BulkEmailResponse = await apiCall(
+        "/emails/bulk-by-category",
+        {
+          method: "POST",
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (response.success) {
+        // Refresh logs and stats after successful send
+        setTimeout(() => {
+          get().fetchEmailLogs();
+          get().fetchEmailStats();
+        }, 1000);
+
+        set({
+          sendingEmail: false,
+          error: null,
+        });
+
+        return response;
+      } else {
+        throw new Error("Failed to send bulk email by category");
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to send bulk email";
       set({ sendingEmail: false, error: errorMessage });
       throw new Error(errorMessage);
     }

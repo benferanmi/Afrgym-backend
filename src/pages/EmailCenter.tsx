@@ -47,6 +47,7 @@ import {
   EmailTemplate as StoreEmailTemplate,
   SingleEmailPayload,
   BulkEmailPayload,
+  BulkEmailByCategoryPayload,
 } from "@/stores/emailStore";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
@@ -54,6 +55,7 @@ import { toast } from "sonner";
 type RecipientType =
   | "all"
   | "active"
+  | "expired"
   | "inactive"
   | "expiring"
   | "membership"
@@ -73,7 +75,14 @@ interface MembershipLevel {
 }
 
 export default function EmailCenter() {
-  const { users, fetchUsers, loading: usersLoading } = useUsersStore();
+  const {
+    users,
+    fetchUsers,
+    loading: usersLoading,
+    recipientStats,
+    recipientStatsLoading,
+    fetchRecipientStats,
+  } = useUsersStore();
   const {
     templates,
     templatesCategories,
@@ -94,6 +103,7 @@ export default function EmailCenter() {
     fetchEmailStats,
     clearError,
     resetLogs,
+    sendBulkEmailByCategory,
   } = useEmailStore();
 
   // Extract unique membership levels from users
@@ -167,34 +177,34 @@ export default function EmailCenter() {
       setLoadingAllUsers(false);
     }
   };
-
   // Initialize data
   useEffect(() => {
     const initializeData = async () => {
       try {
+        // Fetch recipient stats FIRST and independently (most critical for UI)
+        fetchRecipientStats();
+
+        // Fetch other data in parallel
+        const promises = [];
+
         if (!templates) {
-          await fetchTemplates();
+          promises.push(fetchTemplates());
         }
         if (emailLogs.length === 0) {
-          await fetchEmailLogs();
+          promises.push(fetchEmailLogs());
         }
         if (!emailStats) {
-          await fetchEmailStats();
+          promises.push(fetchEmailStats());
         }
+
+        await Promise.all(promises);
       } catch (err) {
         console.error("Failed to initialize email data:", err);
       }
     };
 
     initializeData();
-  }, [
-    templates,
-    emailLogs.length,
-    emailStats,
-    fetchTemplates,
-    fetchEmailLogs,
-    fetchEmailStats,
-  ]);
+  }, []);
 
   // Clear error automatically
   useEffect(() => {
@@ -301,6 +311,7 @@ export default function EmailCenter() {
           (u) =>
             !u.membership.is_active || u.membership.status === "no_membership"
         );
+
       case "expiring":
         return targetUsers.filter((u) => {
           if (!u.membership.expiry_date || !u.membership.is_active)
@@ -318,6 +329,13 @@ export default function EmailCenter() {
             u.membership.level_id?.toString() || ""
           )
         );
+      case "expired":
+        return targetUsers.filter((u) => {
+          if (!u.membership.expiry_date) return false;
+          const expiryDate = new Date(u.membership.expiry_date);
+          const today = new Date();
+          return expiryDate < today && u.membership.status !== "no_membership";
+        });
       case "specific": {
         const user = (allUsers.length > 0 ? allUsers : targetUsers).find(
           (u) => u.id.toString() === specificUserId
@@ -330,14 +348,39 @@ export default function EmailCenter() {
   };
 
   const getRecipientCount = () => {
-    const recipients = getRecipientUsers();
-
-    // For "all" recipients, show actual count from API if available
-    if (selectedRecipients === "all") {
+    // For specific user selection, use local calculation since we have the actual user data
+    if (selectedRecipients === "specific") {
+      const recipients = getRecipientUsers();
       return recipients.length;
     }
 
-    return recipients.length;
+    // For all other recipient types, ONLY use API stats
+    // This ensures consistent counts from the backend database
+    if (!recipientStats) {
+      return 0; // Return 0 while loading, not a calculated value
+    }
+
+    switch (selectedRecipients) {
+      case "all":
+        return recipientStats.all;
+      case "active":
+        return recipientStats.active;
+      case "inactive":
+        return recipientStats.inactive;
+      case "expired":
+        return recipientStats.expired;
+      case "expiring":
+        return recipientStats.expiring_7days;
+      case "membership":
+        if (selectedMembershipIds.length === 0) return 0;
+        return recipientStats.by_membership
+          .filter((level) =>
+            selectedMembershipIds.includes(level.id.toString())
+          )
+          .reduce((sum, level) => sum + level.count, 0);
+      default:
+        return 0;
+    }
   };
 
   const validateForm = () => {
@@ -365,42 +408,110 @@ export default function EmailCenter() {
     return true;
   };
 
+  /**
+   * UPDATED handleSendEmail function for EmailCenter.tsx
+   * Replace the existing handleSendEmail function with this optimized version
+   */
+
   const handleSendEmail = async () => {
     if (!validateForm()) return;
 
-    const recipientUsers = getRecipientUsers();
-
     try {
-      if (recipientUsers.length === 1) {
-        // Send single email
-        const user = recipientUsers[0];
-        const payload: SingleEmailPayload = {
-          user_id: user.id,
-          custom_data: {
-            user_name: `${user.first_name} ${user.last_name}`,
-            membership_plan: user.membership.level_name,
-            expiry_date: user.membership.expiry_date || "N/A",
-          },
-        };
+      // For specific user, still use single/traditional bulk endpoint
+      if (selectedRecipients === "specific") {
+        const recipientUsers = getRecipientUsers();
 
-        if (selectedTemplateKey) payload.template = selectedTemplateKey;
-        if (emailSubject.trim()) payload.custom_subject = emailSubject;
-        if (emailContent.trim()) payload.custom_content = emailContent;
+        if (recipientUsers.length === 1) {
+          // Send single email
+          const user = recipientUsers[0];
+          const payload: SingleEmailPayload = {
+            user_id: user.id,
+            custom_data: {
+              user_name: `${user.first_name} ${user.last_name}`,
+              membership_plan: user.membership.level_name,
+              expiry_date: user.membership.expiry_date || "N/A",
+            },
+          };
 
-        await sendSingleEmail(payload);
-        toast.success("Email sent successfully!");
+          if (selectedTemplateKey) payload.template = selectedTemplateKey;
+          if (emailSubject.trim()) payload.custom_subject = emailSubject;
+          if (emailContent.trim()) payload.custom_content = emailContent;
+
+          await sendSingleEmail(payload);
+          toast.success("Email sent successfully!");
+        } else {
+          // Multiple specific users - use traditional bulk
+          const payload: BulkEmailPayload = {
+            user_ids: recipientUsers.map((u) => u.id),
+            custom_data: {},
+          };
+
+          if (selectedTemplateKey) payload.template = selectedTemplateKey;
+          if (emailSubject.trim()) payload.custom_subject = emailSubject;
+          if (emailContent.trim()) payload.custom_content = emailContent;
+
+          const result = await sendBulkEmail(payload);
+
+          if (result.failed > 0) {
+            toast.warning(
+              `Sent to ${result.sent} recipients, ${result.failed} failed`
+            );
+          } else {
+            toast.success(
+              `Bulk email sent to ${result.sent} recipients successfully!`
+            );
+          }
+        }
       } else {
-        // Send bulk email
-        const payload: BulkEmailPayload = {
-          user_ids: recipientUsers.map((u) => u.id),
+        // ✨ NEW: Use category-based bulk sending for all other recipient types
+        // This is much more efficient - no need to load all users!
+
+        let recipient_type: BulkEmailByCategoryPayload["recipient_type"];
+
+        // Map frontend recipient type to backend category
+        switch (selectedRecipients) {
+          case "all":
+            recipient_type = "all";
+            break;
+          case "active":
+            recipient_type = "active";
+            break;
+          case "inactive":
+            recipient_type = "inactive";
+            break;
+          case "expired": // ✨ NEW: Maps to backend 'expired' category
+            recipient_type = "expired"; // ✨ NEW
+            break;
+          case "expiring":
+            recipient_type = "expiring_7days";
+            break;
+          case "membership":
+            recipient_type = "membership";
+            break;
+          default:
+            throw new Error("Invalid recipient type");
+        }
+
+        const payload: BulkEmailByCategoryPayload = {
+          recipient_type,
           custom_data: {},
         };
 
+        // Add membership level IDs if applicable
+        if (
+          selectedRecipients === "membership" &&
+          selectedMembershipIds.length > 0
+        ) {
+          payload.membership_level_ids = selectedMembershipIds;
+        }
+
+        // Add email content
         if (selectedTemplateKey) payload.template = selectedTemplateKey;
         if (emailSubject.trim()) payload.custom_subject = emailSubject;
         if (emailContent.trim()) payload.custom_content = emailContent;
 
-        const result = await sendBulkEmail(payload);
+        // Send using new category-based endpoint
+        const result = await sendBulkEmailByCategory(payload);
 
         if (result.failed > 0) {
           toast.warning(
@@ -949,6 +1060,7 @@ export default function EmailCenter() {
                         <SelectItem value="inactive">
                           Inactive Members
                         </SelectItem>
+                        <SelectItem value="expired">Expired Members</SelectItem>
                         <SelectItem value="expiring">
                           Expiring Soon (7 days)
                         </SelectItem>
@@ -1151,15 +1263,30 @@ export default function EmailCenter() {
                   <div className="bg-muted p-3 rounded-md">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">Recipients:</span>
-                      <Badge variant="outline">
-                        {getRecipientCount()}{" "}
-                        {getRecipientCount() === 1 ? "person" : "people"}
-                      </Badge>
+                      {recipientStatsLoading || !recipientStats ? (
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span className="text-sm text-muted-foreground">
+                            Loading...
+                          </span>
+                        </div>
+                      ) : (
+                        <Badge variant="outline">
+                          {getRecipientCount()}{" "}
+                          {getRecipientCount() === 1 ? "person" : "people"}
+                        </Badge>
+                      )}
                     </div>
-                    {selectedRecipients === "all" && users.length >= 20 && (
+                    {selectedRecipients !== "specific" &&
+                      recipientStats &&
+                      !recipientStatsLoading && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          ✓ Count from database
+                        </p>
+                      )}
+                    {selectedRecipients === "specific" && specificUserId && (
                       <p className="text-xs text-muted-foreground mt-1">
-                        Note: Showing loaded members. All members will be
-                        included in the actual email send.
+                        ✓ User selected
                       </p>
                     )}
                   </div>

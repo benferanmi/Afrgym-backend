@@ -31,7 +31,7 @@ import {
   GymUser,
   getMembershipStatusColor,
   formatDate,
-  // NEW: Import visit-based utility functions
+  // Import visit-based utility functions
   isVisitBased,
   canCheckin,
   hasCheckedInToday,
@@ -79,7 +79,7 @@ export function ViewMemberDialog({
     }
   };
 
-  // NEW: Get formatted visit information if user has visit-based membership
+  // Get formatted visit information if user has visit-based membership
   const visitInfo = isVisitBased(user) ? formatVisitInfo(user) : null;
 
   return (
@@ -174,7 +174,7 @@ export function ViewMemberDialog({
                     Paused
                   </Badge>
                 )}
-                {/* NEW: Visit-based membership badge */}
+                {/* Visit-based membership badge */}
                 {isVisitBased(user) && (
                   <Badge className="bg-blue-100 text-blue-800">
                     Visit-Based
@@ -206,7 +206,7 @@ export function ViewMemberDialog({
                 )}
               </div>
 
-              {/* NEW: Visit-based membership details */}
+              {/* Visit-based membership details */}
               {isVisitBased(user) && visitInfo ? (
                 <div className="bg-blue-50 p-4 rounded-lg space-y-4">
                   <div className="flex items-center justify-between">

@@ -53,7 +53,7 @@ import {
   getMembershipStatusDisplay,
   getMembershipStatusColor,
   formatDate,
-  // NEW: Import visit-based utility functions
+  // Import visit-based utility functions
   isVisitBased,
   canCheckin,
   hasCheckedInToday,
@@ -121,7 +121,7 @@ export default function Members() {
     selectUser,
     deleteUser,
     clearError,
-    // NEW: Import visit-based store actions
+    // Import visit-based store actions
     checkinUser,
   } = useUsersStore();
 
@@ -149,7 +149,7 @@ export default function Members() {
   const [pauseLoading, setPauseLoading] = useState(false);
   const [unpauseLoading, setUnpauseLoading] = useState(false);
 
-  // NEW: Loading state for check-in actions
+  // Loading state for check-in actions
   const [checkinLoading, setCheckinLoading] = useState(false);
   const [checkinUserId, setCheckinUserId] = useState<number | null>(null);
 
@@ -232,7 +232,7 @@ export default function Members() {
     setUnpauseDialogOpen(true);
   };
 
-  // NEW: Handle check-in functionality
+  // Handle check-in functionality
   const handleCheckinUser = async (user: GymUser) => {
     if (!canCheckin(user)) {
       alert("User cannot check in at this time.");
@@ -437,7 +437,7 @@ export default function Members() {
                 >
                   No Membership
                 </DropdownMenuItem>
-                {/* NEW: Visit-based filters */}
+                {/* Visit-based filters */}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => handleFilterChange("visit_based")}
@@ -520,7 +520,7 @@ export default function Members() {
                             Paused
                           </Badge>
                         )}
-                        {/* NEW: Visit-based badge */}
+                        {/* Visit-based badge */}
                         {isVisitBased(user) && (
                           <Badge
                             variant="outline"
@@ -531,7 +531,7 @@ export default function Members() {
                         )}
                       </div>
 
-                      {/* NEW: Visit information display */}
+                      {/* Visit information display */}
                       {isVisitBased(user) && user.membership.visit_info ? (
                         <div className="space-y-1">
                           <div className="text-xs text-muted-foreground">
@@ -618,7 +618,7 @@ export default function Members() {
                         )}
                         <DropdownMenuSeparator />
 
-                        {/* NEW: Check-in action for visit-based memberships */}
+                        {/* Check-in action for visit-based memberships */}
                         {isVisitBased(user) && canCheckin(user) && (
                           <DropdownMenuItem
                             onClick={() => handleCheckinUser(user)}
@@ -680,7 +680,7 @@ export default function Members() {
                           </DropdownMenuItem>
                         )}
 
-                        {/* NEW: Visit statistics for visit-based users */}
+                        {/* Visit statistics for visit-based users */}
                         {isVisitBased(user) && (
                           <DropdownMenuItem
                             onClick={() => handleViewUser(user)}
