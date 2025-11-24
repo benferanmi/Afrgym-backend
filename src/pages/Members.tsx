@@ -459,7 +459,7 @@ export default function Members() {
             )}
           </Button>
 
-          <Button
+          {/* <Button
             className="gradient-gym text-white"
             onClick={handleExportPDF}
             disabled={exportLoading || loading}
@@ -475,7 +475,7 @@ export default function Members() {
                 PDF Export
               </>
             )}
-          </Button>
+          </Button> */}
         </div>
       </div>
 
