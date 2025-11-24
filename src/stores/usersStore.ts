@@ -1526,29 +1526,16 @@ export const useUsersStore = create<UsersState>((set, get) => ({
         }
       }
 
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          ...(token && { Authorization: `Bearer ${token}` }),
-        },
-      });
+      // ✅ Open in new window - will trigger print dialog
+      const printWindow = window.open(
+        `${url}&token=${token}`,
+        "_blank",
+        "width=1200,height=800"
+      );
 
-      if (!response.ok) {
-        throw new Error("Failed to export users to PDF");
+      if (!printWindow) {
+        throw new Error("Please allow pop-ups to export PDF");
       }
-
-      // Get the blob from response
-      const blob = await response.blob();
-
-      // Create download link
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = downloadUrl;
-      link.download = `gym-users-${new Date().toISOString().split("T")[0]}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(downloadUrl);
 
       set({ exportLoading: false, error: null });
       return { success: true };
