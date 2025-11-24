@@ -15,6 +15,8 @@ import {
   UserCheck,
   Calendar,
   TrendingUp,
+  Box,
+  Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +59,7 @@ import {
   isVisitBased,
   canCheckin,
   hasCheckedInToday,
+  ExportUsersParams,
   getVisitStatusText,
   getVisitProgressPercentage,
 } from "@/stores/usersStore";
@@ -113,6 +116,7 @@ export default function Members() {
     currentPage,
     totalPages,
     total,
+    exportLoading,
     fetchUsers,
     setSearchTerm,
     setFilterStatus,
@@ -123,6 +127,8 @@ export default function Members() {
     clearError,
     // Import visit-based store actions
     checkinUser,
+    exportUsersCSV,
+    exportUsersPDF,
   } = useUsersStore();
 
   // State for edit dialog
@@ -350,6 +356,63 @@ export default function Members() {
     return user.membership.is_paused;
   };
 
+  // Export handlers
+  const handleExportCSV = async () => {
+    try {
+      const params: ExportUsersParams = {};
+
+      // Include current search term if exists
+      if (searchTerm) {
+        params.search = searchTerm;
+      }
+
+      // Map filter status to membership_status
+      if (filterStatus !== "all") {
+        if (filterStatus === "active") {
+          params.membership_status = "active";
+        } else if (filterStatus === "inactive") {
+          params.membership_status = "inactive";
+        }
+      }
+
+      await exportUsersCSV(params);
+
+      // Optional: Show success message
+      console.log("CSV export successful");
+    } catch (error) {
+      console.error("Failed to export CSV:", error);
+      alert("Failed to export users to CSV");
+    }
+  };
+
+  const handleExportPDF = async () => {
+    try {
+      const params: ExportUsersParams = {};
+
+      // Include current search term if exists
+      if (searchTerm) {
+        params.search = searchTerm;
+      }
+
+      // Map filter status to membership_status
+      if (filterStatus !== "all") {
+        if (filterStatus === "active") {
+          params.membership_status = "active";
+        } else if (filterStatus === "inactive") {
+          params.membership_status = "inactive";
+        }
+      }
+
+      await exportUsersPDF(params);
+
+      // Optional: Show success message
+      console.log("PDF export successful");
+    } catch (error) {
+      console.error("Failed to export PDF:", error);
+      alert("Failed to export users to PDF");
+    }
+  };
+
   if (loading && users.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -370,13 +433,50 @@ export default function Members() {
             members)
           </p>
         </div>
-        <Button
-          className="gradient-gym text-white"
-          onClick={() => setAddDialogOpen(true)}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Add Member
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            className="gradient-gym text-white"
+            onClick={() => setAddDialogOpen(true)}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Add Member
+          </Button>
+          <Button
+            className="bg-primary text-white"
+            onClick={handleExportCSV}
+            disabled={exportLoading || loading}
+          >
+            {exportLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Exporting...
+              </>
+            ) : (
+              <>
+                <Box className="mr-2 h-4 w-4" />
+                CSV Export
+              </>
+            )}
+          </Button>
+
+          <Button
+            className="gradient-gym text-white"
+            onClick={handleExportPDF}
+            disabled={exportLoading || loading}
+          >
+            {exportLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Exporting...
+              </>
+            ) : (
+              <>
+                <Download className="mr-2 h-4 w-4" />
+                PDF Export
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Error Alert */}
@@ -500,7 +600,8 @@ export default function Members() {
                           {user.email}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          @{user.username} <br></br> {user?.phone ? user.phone : "No Phone"}
+                          @{user.username} <br></br>{" "}
+                          {user?.phone ? user.phone : "No Phone"}
                         </div>
                       </div>
                     </div>

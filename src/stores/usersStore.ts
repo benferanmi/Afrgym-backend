@@ -125,7 +125,15 @@ export interface PauseMembershipResponse {
   paused_status: boolean;
   reason?: string;
 }
+export interface ExportUsersParams {
+  search?: string;
+  membership_status?: "all" | "active" | "inactive" | "expired";
+}
 
+export interface ExportResponse {
+  success: boolean;
+  message?: string;
+}
 export interface UnpauseMembershipResponse {
   success: boolean;
   message: string;
@@ -346,6 +354,7 @@ interface UsersState {
   totalPages: number;
   total: number;
   error: string | null;
+  exportLoading: boolean;
 
   // QR Code related state
   qrCodeStatistics: QRCodeStatistics["statistics"] | null;
@@ -364,7 +373,11 @@ interface UsersState {
     search?: string,
     perPage?: number
   ) => Promise<void>;
-  fetchAllUsers: (page?: number, search?: string, perPage?: number) => Promise<void>; 
+  fetchAllUsers: (
+    page?: number,
+    search?: string,
+    perPage?: number
+  ) => Promise<void>;
   fetchSingleUser: (id: number) => Promise<GymUser>;
   addUser: (user: CreateUserPayload) => Promise<GymUser>;
   updateUser: (id: number, user: UpdateUserPayload) => Promise<GymUser>;
@@ -405,6 +418,9 @@ interface UsersState {
   getVisitBasedStats: () => Promise<VisitBasedStats["visit_based_stats"]>;
   getLowVisitUsers: (threshold?: number) => Promise<LowVisitUsersResponse>;
   fetchRecipientStats: () => Promise<RecipientStats>;
+
+  exportUsersCSV: (params?: ExportUsersParams) => Promise<ExportResponse>;
+  exportUsersPDF: (params?: ExportUsersParams) => Promise<ExportResponse>;
 }
 
 // Helper function to check if error is related to invalid token
@@ -514,6 +530,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
   visitStatsLoading: false,
   recipientStats: null,
   recipientStatsLoading: false,
+  exportLoading: false,
 
   fetchUsers: async (page = 1, search = "", perPage = 20) => {
     set({ loading: true, error: null });
@@ -558,46 +575,44 @@ export const useUsersStore = create<UsersState>((set, get) => ({
   },
 
   fetchAllUsers: async (page = 1, search = "", perPage = 20) => {
-  set({ loading: true, error: null });
+    set({ loading: true, error: null });
 
-  try {
-    const queryParams = new URLSearchParams();
-    queryParams.append("page", page.toString());
-    queryParams.append("per_page", perPage.toString());
+    try {
+      const queryParams = new URLSearchParams();
+      queryParams.append("page", page.toString());
+      queryParams.append("per_page", perPage.toString());
 
-    if (search) {
-      queryParams.append("search", search);
+      if (search) {
+        queryParams.append("search", search);
+      }
+
+      // Fetch from /users instead of /users/gym-one to get ALL users
+      const response: UsersResponse = await apiCall(`/users?${queryParams}`);
+
+      set({
+        users: response.users,
+        total: response.total,
+        currentPage: response.page,
+        totalPages: response.total_pages,
+        loading: false,
+        error: null,
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to fetch users";
+      set({
+        loading: false,
+        error: errorMessage,
+        users: [],
+        total: 0,
+        totalPages: 1,
+      });
+
+      if (!isTokenInvalidError(error)) {
+        throw new Error(errorMessage);
+      }
     }
-
-    // Fetch from /users instead of /users/gym-one to get ALL users
-    const response: UsersResponse = await apiCall(
-      `/users?${queryParams}`
-    );
-
-    set({
-      users: response.users,
-      total: response.total,
-      currentPage: response.page,
-      totalPages: response.total_pages,
-      loading: false,
-      error: null,
-    });
-  } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Failed to fetch users";
-    set({
-      loading: false,
-      error: errorMessage,
-      users: [],
-      total: 0,
-      totalPages: 1,
-    });
-
-    if (!isTokenInvalidError(error)) {
-      throw new Error(errorMessage);
-    }
-  }
-},
+  },
 
   fetchSingleUser: async (id: number) => {
     set({ loading: true, error: null });
@@ -1407,6 +1422,142 @@ export const useUsersStore = create<UsersState>((set, get) => ({
           ? error.message
           : "Failed to fetch recipient statistics";
       set({ recipientStatsLoading: false, error: errorMessage });
+
+      if (!isTokenInvalidError(error)) {
+        throw new Error(errorMessage);
+      }
+      throw new Error(errorMessage);
+    }
+  },
+  // Export Actions
+  exportUsersCSV: async (params: ExportUsersParams = {}) => {
+    set({ exportLoading: true, error: null });
+
+    try {
+      const queryParams = new URLSearchParams();
+
+      if (params.search) {
+        queryParams.append("search", params.search);
+      }
+
+      if (params.membership_status && params.membership_status !== "all") {
+        queryParams.append("membership_status", params.membership_status);
+      }
+
+      const url = `${BASE_URL}/users/export/csv?${queryParams}`;
+
+      const authState = localStorage.getItem("gym-auth-storage");
+      let token = null;
+
+      if (authState) {
+        try {
+          const parsedAuth = JSON.parse(authState);
+          token = parsedAuth.state?.token;
+        } catch (error) {
+          console.warn("Failed to parse auth token:", error);
+        }
+      }
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to export users to CSV");
+      }
+
+      // Get the blob from response
+      const blob = await response.blob();
+
+      // Create download link
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = `gym-users-${new Date().toISOString().split("T")[0]}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+
+      set({ exportLoading: false, error: null });
+      return { success: true };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to export users to CSV";
+      set({ exportLoading: false, error: errorMessage });
+
+      if (!isTokenInvalidError(error)) {
+        throw new Error(errorMessage);
+      }
+      throw new Error(errorMessage);
+    }
+  },
+
+  exportUsersPDF: async (params: ExportUsersParams = {}) => {
+    set({ exportLoading: true, error: null });
+
+    try {
+      const queryParams = new URLSearchParams();
+
+      if (params.search) {
+        queryParams.append("search", params.search);
+      }
+
+      if (params.membership_status && params.membership_status !== "all") {
+        queryParams.append("membership_status", params.membership_status);
+      }
+
+      const url = `${BASE_URL}/users/export/pdf?${queryParams}`;
+
+      const authState = localStorage.getItem("gym-auth-storage");
+      let token = null;
+
+      if (authState) {
+        try {
+          const parsedAuth = JSON.parse(authState);
+          token = parsedAuth.state?.token;
+        } catch (error) {
+          console.warn("Failed to parse auth token:", error);
+        }
+      }
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to export users to PDF");
+      }
+
+      // Get the blob from response
+      const blob = await response.blob();
+
+      // Create download link
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = `gym-users-${new Date().toISOString().split("T")[0]}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+
+      set({ exportLoading: false, error: null });
+      return { success: true };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to export users to PDF";
+      set({ exportLoading: false, error: errorMessage });
 
       if (!isTokenInvalidError(error)) {
         throw new Error(errorMessage);
