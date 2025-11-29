@@ -1,5 +1,17 @@
 import { useState } from "react";
-import { Search, User, LogOut, Menu, X, LayoutDashboard, Users, QrCode, CreditCard, Mail } from "lucide-react";
+import {
+  Search,
+  User,
+  LogOut,
+  Menu,
+  X,
+  LayoutDashboard,
+  Users,
+  QrCode,
+  CreditCard,
+  Mail,
+  ShoppingBagIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -21,6 +33,7 @@ const navigationItems = [
   { title: "QR Codes", url: "/qr-codes", icon: QrCode },
   { title: "Memberships", url: "/memberships", icon: CreditCard },
   { title: "Email Center", url: "/emails", icon: Mail },
+  { title: "Products", url: "/products", icon: ShoppingBagIcon },
 ];
 
 export function AppHeader() {
@@ -73,7 +86,10 @@ export function AppHeader() {
           {/* User Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="flex items-center gap-2 px-2 md:px-3">
+              <Button
+                variant="ghost"
+                className="flex items-center gap-2 px-2 md:px-3"
+              >
                 <Avatar className="h-8 w-8">
                   <AvatarImage src={user?.profileImage} alt={user?.username} />
                   <AvatarFallback className="bg-primary text-primary-foreground">
@@ -121,11 +137,7 @@ export function AppHeader() {
                   <p className="text-xs text-muted-foreground">Admin Panel</p>
                 </div>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={closeMobileMenu}
-              >
+              <Button variant="ghost" size="icon" onClick={closeMobileMenu}>
                 <X className="h-5 w-5" />
               </Button>
             </div>
