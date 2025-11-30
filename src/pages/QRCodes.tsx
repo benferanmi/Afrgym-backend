@@ -86,7 +86,9 @@ export default function QRCodes() {
       setLookupResult(result);
 
       if (!result.user_found) {
-        setLookupError("No user found with this QR code");
+        setLookupError(
+          "No user found with this QR code, username, email, or phone number."
+        );
       }
     } catch (err) {
       setLookupError(err.message || "Failed to lookup QR code");
@@ -163,13 +165,13 @@ export default function QRCodes() {
 
   const handleSearch = (value) => {
     setSearchTerm(value);
+  };
 
-    // If the search looks like a QR code (8 digits alphanumeric), do cross-gym lookup
-    if (value.length === 8 && /^[A-Za-z0-9]{8}$/.test(value)) {
-      handleQRCodeLookup(value); // This works across gyms
+  const handleSearchSubmit = () => {
+    if (searchTerm.trim().length >= 3) {
+      handleQRCodeLookup(searchTerm.trim());
     } else {
-      setLookupResult(null);
-      setLookupError("");
+      setLookupError("Please enter at least 3 characters to search");
     }
   };
 
@@ -215,7 +217,7 @@ export default function QRCodes() {
       console.log("Valid QR code detected:", qrCode);
     } else {
       setLookupError(
-        "Invalid QR code format. Expected 8-digit alphanumeric code."
+        "Invalid QR code format. Expected 8-digit alphanumeric code. Try manual search for username/email/phone."
       );
       console.log("Invalid QR code format:", scannedData);
     }
@@ -311,7 +313,7 @@ export default function QRCodes() {
         </Card>
       </div>
 
-      {/* Enhanced QR Code Lookup Result - Shows ANY user from cross-gym lookup */}
+      {/* Enhanced User Lookup Result - Shows ANY user from cross-gym lookup */}
       {lookupResult && (
         <Card
           className={`border-2 ${
@@ -325,7 +327,7 @@ export default function QRCodes() {
               ) : (
                 <XCircle className="w-5 h-5 text-red-500" />
               )}
-              QR Code Lookup Result
+              User Lookup Result
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -336,7 +338,7 @@ export default function QRCodes() {
                   <div className="flex-shrink-0">
                     {lookupResult.user.first_name &&
                     lookupResult.user.last_name ? (
-                      <Avatar className="w-20 h-20">
+                      <Avatar className="w-20 h-20 block">
                         <AvatarImage
                           src={
                             lookupResult.user.profile_picture_url ||
@@ -593,19 +595,33 @@ export default function QRCodes() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Search members or enter 8-digit QR code..."
+                placeholder="Search by QR code, username, email, or phone..."
                 value={searchTerm}
                 onChange={(e) => handleSearch(e.target.value)}
+                onKeyUp={(e) => e.key === "Enter" && handleSearchSubmit()}
                 className="pl-10"
                 maxLength={50}
               />
             </div>
-            {lookupLoading && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                Looking up QR code...
-              </div>
-            )}
+            <Button
+              onClick={handleSearchSubmit}
+              disabled={lookupLoading || searchTerm.trim().length < 3}
+              size="sm"
+              className="shrink-0"
+            >
+              {lookupLoading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Searching...
+                </>
+              ) : (
+                <>
+                  <Search className="w-4 h-4 mr-2" />
+                  Search
+                </>
+              )}
+            </Button>
+
             <Button
               variant="outline"
               size="sm"

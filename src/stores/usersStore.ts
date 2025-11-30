@@ -1507,7 +1507,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
       if (params.search) {
         queryParams.append("search", params.search);
       }
-
+ 
       if (params.membership_status && params.membership_status !== "all") {
         queryParams.append("membership_status", params.membership_status);
       }
