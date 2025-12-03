@@ -20,6 +20,7 @@ import {
   Clock,
   Shield,
   AlertTriangle,
+  Edit,
 } from "lucide-react";
 import {
   useUsersStore,
@@ -29,10 +30,12 @@ import {
   isVisitBased,
   getMembershipStatusDisplay,
   getMembershipStatusColor,
+  GymUser,
 } from "@/stores/usersStore";
 import { QRScanner } from "@/components/QRScanner";
 import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
 import { Separator } from "@/components/ui/separator";
+import { EditMemberDialog } from "@/components/members/EditMemberDialog";
 
 const BASE_URL = "https://afrgym.com.ng/wp-json/gym-admin/v1";
 
@@ -48,6 +51,7 @@ export default function QRCodes() {
     getQRCodeStatistics,
     clearError,
     generateUserQRCode,
+    fetchSingleUser,
   } = useUsersStore();
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -55,6 +59,11 @@ export default function QRCodes() {
   const [lookupResult, setLookupResult] = useState(null);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState("");
+  const [assignMembershipDialogOpen, setAssignMembershipDialogOpen] =
+    useState(false);
+  const [editingUserFromQR, setEditingUserFromQR] = useState<GymUser | null>(
+    null
+  );
 
   // Load initial data - fetch gym-specific users for the list
   useEffect(() => {
@@ -161,6 +170,37 @@ export default function QRCodes() {
     } finally {
       setLookupLoading(false);
     }
+  };
+
+  // Handler to open edit dialog for cross-gym membership assignment
+  const handleAssignMembershipFromQR = async () => {
+    if (!lookupResult?.user) return;
+
+    // Use local loading state instead of store loading
+    setLookupLoading(true);
+    setLookupError("");
+
+    try {
+      // Fetch the full user object to populate the edit dialog
+      const fullUser = await fetchSingleUser(lookupResult.user.id);
+      setEditingUserFromQR(fullUser);
+      setAssignMembershipDialogOpen(true);
+    } catch (error) {
+      console.error("Failed to fetch user details:", error);
+      setLookupError("Failed to load user details for editing");
+    } finally {
+      // Clear local loading state
+      setLookupLoading(false);
+    }
+  };
+
+  const handleEditSuccess = () => {
+    // Refresh the lookup to show updated data
+    if (lookupResult?.user?.unique_id) {
+      handleQRCodeLookup(lookupResult.user.unique_id);
+    }
+    // Refresh statistics
+    getQRCodeStatistics();
   };
 
   const handleSearch = (value) => {
@@ -510,6 +550,62 @@ export default function QRCodes() {
                   </div>
                 )}
 
+                {/* 🆕 MEMBERSHIP MANAGEMENT ACTIONS */}
+                <Separator />
+                <div className="space-y-3">
+                  <h4 className="font-medium flex items-center gap-2">
+                    <User className="w-4 h-4" />
+                    Membership Actions
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      onClick={handleAssignMembershipFromQR}
+                      disabled={lookupLoading}
+                      variant="default"
+                      size="sm"
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      {lookupLoading ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        <>
+                          <Edit className="w-4 h-4 mr-2" />
+                          Assign/Renew Membership
+                        </>
+                      )}
+                    </Button>
+
+                    {lookupResult.user.membership.is_visit_based &&
+                      lookupResult.visit_status?.can_check_in &&
+                      !lookupResult.visit_status?.already_checked_in_today && (
+                        <Button
+                          onClick={handleCheckinUser}
+                          disabled={lookupLoading}
+                          size="sm"
+                          className="bg-green-600 hover:bg-green-700"
+                        >
+                          {lookupLoading ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                              Checking In...
+                            </>
+                          ) : (
+                            <>
+                              <UserCheck className="w-4 h-4 mr-2" />
+                              Check In Now
+                            </>
+                          )}
+                        </Button>
+                      )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    💡 You can manage membership for users from any gym location
+                  </p>
+                </div>
+
                 {/* Visit Status and Check-in Button */}
                 {lookupResult.visit_status && (
                   <div className="space-y-3">
@@ -517,55 +613,29 @@ export default function QRCodes() {
                       <UserCheck className="w-4 h-4" />
                       Today's Visit Status
                     </h4>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        {lookupResult.visit_status.already_checked_in_today ? (
-                          <div className="flex items-center gap-2 text-green-600">
-                            <CheckCircle2 className="w-4 h-4" />
-                            <span className="text-sm font-medium">
-                              Already checked in today
-                            </span>
-                          </div>
-                        ) : lookupResult.visit_status.can_check_in ? (
-                          <div className="flex items-center gap-2 text-blue-600">
-                            <Clock className="w-4 h-4" />
-                            <span className="text-sm font-medium">
-                              Ready to check in
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2 text-gray-600">
-                            <AlertTriangle className="w-4 h-4" />
-                            <span className="text-sm font-medium">
-                              Cannot check in
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Show check-in button for visit-based users who can check in */}
-                      {lookupResult.user.membership.is_visit_based &&
-                        lookupResult.visit_status.can_check_in &&
-                        !lookupResult.visit_status.already_checked_in_today && (
-                          <Button
-                            onClick={handleCheckinUser}
-                            disabled={lookupLoading}
-                            size="sm"
-                            className="bg-green-600 hover:bg-green-700"
-                          >
-                            {lookupLoading ? (
-                              <>
-                                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                                Checking In...
-                              </>
-                            ) : (
-                              <>
-                                <UserCheck className="w-4 h-4 mr-2" />
-                                Check In Now
-                              </>
-                            )}
-                          </Button>
-                        )}
+                    <div className="flex items-center gap-2">
+                      {lookupResult.visit_status.already_checked_in_today ? (
+                        <div className="flex items-center gap-2 text-green-600">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span className="text-sm font-medium">
+                            Already checked in today
+                          </span>
+                        </div>
+                      ) : lookupResult.visit_status.can_check_in ? (
+                        <div className="flex items-center gap-2 text-blue-600">
+                          <Clock className="w-4 h-4" />
+                          <span className="text-sm font-medium">
+                            Ready to check in
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-gray-600">
+                          <AlertTriangle className="w-4 h-4" />
+                          <span className="text-sm font-medium">
+                            Cannot check in
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -756,6 +826,14 @@ export default function QRCodes() {
         onClose={handleScannerClose}
         onScan={handleQRScanned}
       />
+      {editingUserFromQR && (
+        <EditMemberDialog
+          user={editingUserFromQR}
+          open={assignMembershipDialogOpen}
+          onOpenChange={setAssignMembershipDialogOpen}
+          onSuccess={handleEditSuccess}
+        />
+      )}
     </div>
   );
 }
