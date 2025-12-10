@@ -21,6 +21,7 @@ import {
   Shield,
   AlertTriangle,
   Edit,
+  CreditCard,
 } from "lucide-react";
 import {
   useUsersStore,
@@ -36,6 +37,7 @@ import { QRScanner } from "@/components/QRScanner";
 import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
 import { Separator } from "@/components/ui/separator";
 import { EditMemberDialog } from "@/components/members/EditMemberDialog";
+import { IDCardGenerator } from "@/components/members/IDCardGenerator";
 
 const BASE_URL = "https://afrgym.com.ng/wp-json/gym-admin/v1";
 
@@ -64,6 +66,8 @@ export default function QRCodes() {
   const [editingUserFromQR, setEditingUserFromQR] = useState<GymUser | null>(
     null
   );
+  const [idCardDialogOpen, setIdCardDialogOpen] = useState(false);
+  const [idCardUser, setIdCardUser] = useState<GymUser | null>(null);
 
   // Load initial data - fetch gym-specific users for the list
   useEffect(() => {
@@ -93,6 +97,8 @@ export default function QRCodes() {
       // This lookup works across ALL gyms via backend
       const result = await lookupUserByQRCode(qrCodeValue.trim());
       setLookupResult(result);
+
+      console.log(lookupResult);
 
       if (!result.user_found) {
         setLookupError(
@@ -159,6 +165,8 @@ export default function QRCodes() {
             already_checked_in_today: true,
           },
         });
+
+        console.log(lookupResult);
 
         // Show success message
         alert(
@@ -639,6 +647,20 @@ export default function QRCodes() {
                     </div>
                   </div>
                 )}
+
+                <Button
+                  onClick={() => {
+                    if (lookupResult?.user) {
+                      setIdCardUser(lookupResult.user);
+                      setIdCardDialogOpen(true);
+                    }
+                  }}
+                  size="sm"
+                  variant="outline"
+                >
+                  <CreditCard className="w-4 h-4 mr-2" />
+                  Download ID Card
+                </Button>
               </div>
             ) : (
               <p className="text-red-600">
@@ -799,6 +821,17 @@ export default function QRCodes() {
                             <Download className="w-4 h-4 mr-2" />
                             Download
                           </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setIdCardUser(user);
+                              setIdCardDialogOpen(true);
+                            }}
+                          >
+                            <CreditCard className="w-4 h-4 mr-2" />
+                            ID Card
+                          </Button>
                         </>
                       ) : (
                         <Button
@@ -832,6 +865,13 @@ export default function QRCodes() {
           open={assignMembershipDialogOpen}
           onOpenChange={setAssignMembershipDialogOpen}
           onSuccess={handleEditSuccess}
+        />
+      )}
+      {idCardUser && (
+        <IDCardGenerator
+          user={idCardUser}
+          open={idCardDialogOpen}
+          onOpenChange={setIdCardDialogOpen}
         />
       )}
     </div>

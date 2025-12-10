@@ -17,6 +17,7 @@ import {
   TrendingUp,
   Box,
   Download,
+  CreditCard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,6 +67,7 @@ import {
 import { EditMemberDialog } from "@/components/members/EditMemberDialog";
 import { AddMemberDialog } from "@/components/members/AddMemberDialog";
 import { ViewMemberDialog } from "@/components/members/ViewMemberDialog";
+import { IDCardGenerator } from "@/components/members/IDCardGenerator";
 
 const BASE_URL = "https://afrgym.com.ng/wp-json/gym-admin/v1";
 
@@ -158,6 +160,9 @@ export default function Members() {
   // Loading state for check-in actions
   const [checkinLoading, setCheckinLoading] = useState(false);
   const [checkinUserId, setCheckinUserId] = useState<number | null>(null);
+
+  const [idCardDialogOpen, setIdCardDialogOpen] = useState(false);
+  const [idCardUser, setIdCardUser] = useState<GymUser | null>(null);
 
   // Load users on component mount
   useEffect(() => {
@@ -707,6 +712,15 @@ export default function Members() {
                           <Edit className="mr-2 h-4 w-4" />
                           Edit Member
                         </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setIdCardUser(user);
+                            setIdCardDialogOpen(true);
+                          }}
+                        >
+                          <CreditCard className="mr-2 h-4 w-4" />
+                          Download ID Card
+                        </DropdownMenuItem>
                         {user.qr_code.qr_code_url && (
                           <DropdownMenuItem
                             onClick={() =>
@@ -1019,6 +1033,13 @@ export default function Members() {
         onOpenChange={setAddDialogOpen}
         onSuccess={handleAddSuccess}
       />
+      {idCardUser && (
+        <IDCardGenerator
+          user={idCardUser}
+          open={idCardDialogOpen}
+          onOpenChange={setIdCardDialogOpen}
+        />
+      )}
     </div>
   );
 }
