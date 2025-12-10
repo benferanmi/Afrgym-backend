@@ -62,37 +62,45 @@ export function IDCardGenerator({
   };
 
   const handlePrint = () => {
-    const printWindow = window.open('', '_blank');
+    const printWindow = window.open("", "_blank");
     if (printWindow && cardRef.current) {
-      const cardHTML = cardRef.current.outerHTML;
+      const clone = cardRef.current.cloneNode(true) as HTMLElement;
+      clone.style.backgroundColor = "#2579f5";
+      const cardHTML = clone.outerHTML;
       printWindow.document.write(`
         <!DOCTYPE html>
         <html>
           <head>
             <title>ID Card - ${getUserName()}</title>
-            <style>
-              * {
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-              }
-              body {
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                min-height: 100vh;
-                background: white;
-              }
-              @media print {
-                body {
-                  background: white;
-                }
-                @page {
-                  margin: 0;
-                  size: landscape;
-                }
-              }
-            </style>
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: white;
+  }
+  @media print {
+    body {
+      background: white !important;
+    }
+    @page {
+      margin: 0;
+      size: landscape;
+    }
+    * {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+  }
+</style>
             <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
           </head>
           <body>
@@ -118,7 +126,7 @@ export function IDCardGenerator({
       const html2canvas = (await import("html2canvas")).default;
       if (cardRef.current) {
         const canvas = await html2canvas(cardRef.current, {
-          scale: 3,
+          scale: 2,
           backgroundColor: "#ffffff",
           logging: false,
           useCORS: true,
@@ -181,7 +189,8 @@ export function IDCardGenerator({
           <div className="flex justify-center py-6 bg-gray-50 rounded-lg">
             <div
               ref={cardRef}
-              className="relative bg-[#2579f5] overflow-hidden shadow-2xl"
+              data-card="true"
+              className="relative overflow-hidden shadow-2xl bg-[#2579f5]"
               style={{
                 width: "428px",
                 height: "270px",
@@ -192,7 +201,7 @@ export function IDCardGenerator({
               {/* <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-500"></div> */}
 
               {/* Card Content */}
-              <div className="relative h-full p-6 flex gap-4">
+              <div className="relative h-full p-6 flex gap-4 bg-inherit">
                 {/* Left Section */}
                 <div className="flex-1 flex flex-col">
                   {/* Logo & Brand */}
@@ -216,7 +225,7 @@ export function IDCardGenerator({
                   </div>
 
                   {/* User Info Section */}
-                  <div className="flex items-center gap-4 mb-auto">
+                  <div className="flex items-center gap-4 mb-auto z-10">
                     {/* Profile Picture */}
                     <div className="relative">
                       <div className="w-20 h-20 rounded-2xl overflow-hidden bg-gradient-to-br from-cyan-100 to-blue-100 shadow-md">
@@ -244,17 +253,20 @@ export function IDCardGenerator({
                       <p className="text-sm text-white font-semibold mb-1">
                         @{user.username}
                       </p>
-                      <p className="text-xs text-gray-200 truncate">
+                      <p className="text-xs text-gray-200 truncate h-6 z-10">
                         {user.email}
                       </p>
                     </div>
                   </div>
 
                   {/* Footer Badge */}
-                  <div className="mt-2">
-                    <div className="inline-block px-3 py-1 bg-gradient-to-r from-cyan-50 to-blue-50 rounded-full border border-cyan-200">
-                      <p className="text-xs text-cyan-800 font-bold uppercase tracking-wide">
-                        ✓ Authorized Member
+                  <div className=" z-10">
+                    <div
+                      className="flex justify-center items-center bg-white rounded-full border border-cyan-200 h-6 px-3"
+                      style={{ width: "auto", maxWidth: "200px" }}
+                    >
+                      <p className="text-xs pb-3 text-black z-10 font-bold uppercase tracking-wide print:pb-0">
+                        ✓ AUTHORIZED MEMBER
                       </p>
                     </div>
                   </div>
@@ -275,14 +287,19 @@ export function IDCardGenerator({
                       <p className="text-[10px] font-mono font-bold text-gray-300 mt-2 text-center break-all px-1">
                         {getQRUniqueId()}
                       </p>
-                      <p className="text-[9px] text-gray-100 mt-1 uppercase tracking-wider font-semibold">
+                      <p
+                        style={{ fontSize: "9px" }}
+                        className="text-gray-100 mt-1 uppercase tracking-wider font-semibold"
+                      >
                         Scan to verify
                       </p>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center h-full text-gray-300">
                       <div className="w-28 h-28 border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center bg-gray-50">
-                        <span className="text-xs font-semibold text-gray-400">No QR</span>
+                        <span className="text-xs font-semibold text-gray-400">
+                          No QR
+                        </span>
                       </div>
                     </div>
                   )}
@@ -290,9 +307,9 @@ export function IDCardGenerator({
               </div>
 
               {/* Decorative Corner Element */}
-              <div className="absolute bottom-0 right-0 w-24 h-24 opacity-5">
+              {/* <div className="absolute bottom-0 right-0 w-24 h-24 opacity-5">
                 <div className="absolute inset-0 bg-gradient-to-tl from-cyan-500 to-transparent rounded-tl-full"></div>
-              </div>
+              </div> */}
             </div>
           </div>
 
