@@ -17,6 +17,7 @@ export interface EmailTemplate {
 export interface EmailTemplates {
   [key: string]: EmailTemplate;
 }
+
 export interface BulkEmailByCategoryPayload {
   recipient_type:
     | "all"
@@ -33,13 +34,12 @@ export interface BulkEmailByCategoryPayload {
   custom_content?: string;
   custom_data?: Record<string, any>;
 }
-// Email Payload Interfaces
+
 export interface SingleEmailPayload {
   user_id: number;
   template?: string;
   custom_subject?: string;
   custom_content?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   custom_data?: Record<string, any>;
 }
 
@@ -48,11 +48,9 @@ export interface BulkEmailPayload {
   template?: string;
   custom_subject?: string;
   custom_content?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   custom_data?: Record<string, any>;
 }
 
-// Email Response Interfaces
 export interface SingleEmailResponse {
   success: boolean;
   message: string;
@@ -63,7 +61,8 @@ export interface SingleEmailResponse {
 
 export interface BulkEmailResponse {
   success: boolean;
-  results: {
+  job_id?: string;
+  results?: {
     sent: number;
     failed: number;
     errors: Array<{
@@ -71,10 +70,14 @@ export interface BulkEmailResponse {
       error: string;
     }>;
   };
-  total_attempted: number;
+  total_attempted?: number;
   sent: number;
   failed: number;
-  invalid_users: number;
+  invalid_users?: number;
+  message?: string;
+  status?: string;
+  total_users?: number;
+  note?: string;
 }
 
 export interface EmailTemplatesResponse {
@@ -93,7 +96,6 @@ export interface EmailPreviewPayload {
   user_id?: number;
   custom_subject?: string;
   custom_content?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   custom_data?: Record<string, any>;
 }
 
@@ -123,7 +125,6 @@ export interface EmailStats {
   date_from: string;
 }
 
-// Email History Interface
 export interface EmailLog {
   id: number;
   user_id: number;
@@ -146,8 +147,50 @@ export interface EmailLogsResponse {
   has_more: boolean;
 }
 
-// Helper function to check if error is related to invalid token
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// ✨ NEW: Bulk Job Interfaces
+export interface FailedJobUser {
+  user_id: number;
+  email: string;
+  username?: string;
+  display_name?: string;
+  error: string;
+  retry_count?: number;
+}
+
+export interface BulkJob {
+  job_id: string;
+  status: "processing" | "completed" | "failed";
+  total_users: number;
+  sent: number;
+  failed: number;
+  started_at: string;
+  completed_at: string | null;
+  current_batch?: number;
+  total_batches?: number;
+  failed_users: FailedJobUser[];
+}
+
+export interface BulkJobsResponse {
+  jobs: BulkJob[];
+  total: number;
+  page: number;
+  per_page: number;
+  has_more: boolean;
+}
+
+export interface BulkJobResponse {
+  success: boolean;
+  job: BulkJob;
+}
+
+export interface RetryFailedResponse {
+  success: boolean;
+  message: string;
+  retried_count: number;
+  job: BulkJob;
+}
+
+// Token validation helpers
 const isTokenInvalidError = (error: any): boolean => {
   if (error?.code === "jwt_auth_invalid_token") return true;
   if (error?.data?.status === 403) return true;
@@ -158,21 +201,19 @@ const isTokenInvalidError = (error: any): boolean => {
   return false;
 };
 
-// Helper function to trigger logout and redirect
 const handleTokenInvalidation = async () => {
   console.log("Invalid token detected, logging out user");
   localStorage.removeItem("gym-auth-storage");
   window.dispatchEvent(
     new CustomEvent("auth:logout", {
       detail: { reason: "token_invalid" },
-    })
+    }),
   );
   if (typeof window !== "undefined") {
     window.location.href = "/login";
   }
 };
 
-// Enhanced API call function with automatic logout on invalid token
 const apiCall = async (endpoint: string, options: RequestInit = {}) => {
   const url = `${BASE_URL}${endpoint}`;
 
@@ -214,7 +255,7 @@ const apiCall = async (endpoint: string, options: RequestInit = {}) => {
       }
 
       throw new Error(
-        error.message || `HTTP ${response.status}: ${response.statusText}`
+        error.message || `HTTP ${response.status}: ${response.statusText}`,
       );
     }
 
@@ -237,12 +278,17 @@ interface EmailState {
   > | null;
   emailLogs: EmailLog[];
   emailStats: EmailStats | null;
+  currentJob: BulkJob | null;
+  jobHistory: BulkJob[];
+  jobHistoryTotal: number;
 
   // Loading states
   loading: boolean;
   sendingEmail: boolean;
   loadingPreview: boolean;
   loadingStats: boolean;
+  jobLoading: boolean;
+  jobHistoryLoading: boolean;
 
   // Error states
   error: string | null;
@@ -250,11 +296,17 @@ interface EmailState {
   // Pagination
   logsOffset: number;
   logsHasMore: boolean;
+  jobHistoryPage: number;
+  jobHistoryHasMore: boolean;
+
+  // Polling
+  isPollingJob: boolean;
+  pollingJobId: string | null;
 
   // Actions
   fetchTemplates: () => Promise<EmailTemplatesResponse>;
   sendSingleEmail: (
-    payload: SingleEmailPayload
+    payload: SingleEmailPayload,
   ) => Promise<SingleEmailResponse>;
   sendBulkEmail: (payload: BulkEmailPayload) => Promise<BulkEmailResponse>;
   previewEmail: (payload: EmailPreviewPayload) => Promise<EmailPreviewResponse>;
@@ -262,15 +314,22 @@ interface EmailState {
   fetchEmailLogs: (
     offset?: number,
     limit?: number,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    filters?: Record<string, any>
+    filters?: Record<string, any>,
   ) => Promise<void>;
   fetchEmailStats: (period?: number) => Promise<void>;
   clearError: () => void;
   resetLogs: () => void;
   sendBulkEmailByCategory: (
-    payload: BulkEmailByCategoryPayload
+    payload: BulkEmailByCategoryPayload,
   ) => Promise<BulkEmailResponse>;
+
+  // ✨ NEW: Job actions
+  checkJobStatus: (jobId: string) => Promise<BulkJob>;
+  fetchJobHistory: (page?: number, limit?: number) => Promise<void>;
+  retryFailedEmails: (jobId: string) => Promise<RetryFailedResponse>;
+  startJobPolling: (jobId: string) => void;
+  stopJobPolling: () => void;
+  clearCurrentJob: () => void;
 }
 
 export const useEmailStore = create<EmailState>((set, get) => ({
@@ -279,12 +338,17 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   templatesCategories: null,
   emailLogs: [],
   emailStats: null,
+  currentJob: null,
+  jobHistory: [],
+  jobHistoryTotal: 0,
 
   // Loading states
   loading: false,
   sendingEmail: false,
   loadingPreview: false,
   loadingStats: false,
+  jobLoading: false,
+  jobHistoryLoading: false,
 
   // Error states
   error: null,
@@ -292,14 +356,19 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   // Pagination
   logsOffset: 0,
   logsHasMore: false,
+  jobHistoryPage: 1,
+  jobHistoryHasMore: false,
+
+  // Polling
+  isPollingJob: false,
+  pollingJobId: null,
 
   fetchTemplates: async () => {
     set({ loading: true, error: null });
 
     try {
-      const response: EmailTemplatesResponse = await apiCall(
-        "/emails/templates"
-      );
+      const response: EmailTemplatesResponse =
+        await apiCall("/emails/templates");
 
       set({
         templates: response.templates,
@@ -332,7 +401,6 @@ export const useEmailStore = create<EmailState>((set, get) => ({
       });
 
       if (response.success) {
-        // Refresh logs after successful send
         setTimeout(() => {
           get().fetchEmailLogs();
         }, 1000);
@@ -363,20 +431,23 @@ export const useEmailStore = create<EmailState>((set, get) => ({
         {
           method: "POST",
           body: JSON.stringify(payload),
-        }
+        },
       );
 
-      if (response.success) {
-        // Refresh logs and stats after successful send
-        setTimeout(() => {
-          get().fetchEmailLogs();
-          get().fetchEmailStats();
-        }, 1000);
-
+      if (response.success && response.job_id) {
+        // ✨ NEW: Start polling the job
         set({
           sendingEmail: false,
           error: null,
         });
+
+        get().startJobPolling(response.job_id);
+
+        setTimeout(() => {
+          get().fetchEmailLogs();
+          get().fetchEmailStats();
+          get().fetchJobHistory(1);
+        }, 1000);
 
         return response;
       } else {
@@ -400,16 +471,23 @@ export const useEmailStore = create<EmailState>((set, get) => ({
       });
 
       if (response.success) {
-        // Refresh logs and stats after successful send
+        // ✨ NEW: Start polling the job if we have job_id
+        if (response.job_id) {
+          set({
+            sendingEmail: false,
+            error: null,
+          });
+
+          get().startJobPolling(response.job_id);
+        }
+
         setTimeout(() => {
           get().fetchEmailLogs();
           get().fetchEmailStats();
+          if (response.job_id) {
+            get().fetchJobHistory(1);
+          }
         }, 1000);
-
-        set({
-          sendingEmail: false,
-          error: null,
-        });
 
         return response;
       } else {
@@ -482,7 +560,7 @@ export const useEmailStore = create<EmailState>((set, get) => ({
       });
 
       const response: EmailLogsResponse = await apiCall(
-        `/emails/logs?${params.toString()}`
+        `/emails/logs?${params.toString()}`,
       );
 
       set((state) => ({
@@ -509,7 +587,7 @@ export const useEmailStore = create<EmailState>((set, get) => ({
 
     try {
       const response: EmailStats = await apiCall(
-        `/emails/stats?period=${period}`
+        `/emails/stats?period=${period}`,
       );
 
       set({
@@ -539,4 +617,152 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   },
 
   clearError: () => set({ error: null }),
+
+  // ✨ NEW: Job Status Checking
+  checkJobStatus: async (jobId: string) => {
+    set({ jobLoading: true, error: null });
+
+    try {
+      const response: BulkJobResponse = await apiCall(`/bulk-jobs/${jobId}`);
+
+      if (response.success) {
+        set({
+          currentJob: response.job,
+          jobLoading: false,
+          error: null,
+        });
+
+        return response.job;
+      } else {
+        throw new Error("Failed to check job status");
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to check job status";
+      set({ jobLoading: false, error: errorMessage });
+      throw new Error(errorMessage);
+    }
+  },
+
+  // ✨ NEW: Fetch Job History
+  fetchJobHistory: async (page = 1, limit = 10) => {
+    set({ jobHistoryLoading: page === 1 });
+
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: limit.toString(),
+      });
+
+      const response: BulkJobsResponse = await apiCall(
+        `/bulk-jobs?${params.toString()}`,
+      );
+
+      set({
+        jobHistory:
+          page === 1 ? response.jobs : [...get().jobHistory, ...response.jobs],
+        jobHistoryPage: page,
+        jobHistoryTotal: response.total,
+        jobHistoryHasMore: response.has_more,
+        jobHistoryLoading: false,
+        error: null,
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to fetch job history";
+      set({
+        jobHistoryLoading: false,
+        error: errorMessage,
+      });
+      throw new Error(errorMessage);
+    }
+  },
+
+  // ✨ NEW: Retry Failed Emails
+  retryFailedEmails: async (jobId: string) => {
+    set({ jobLoading: true, error: null });
+
+    try {
+      const response: RetryFailedResponse = await apiCall(
+        `/bulk-jobs/${jobId}/retry`,
+        {
+          method: "POST",
+        },
+      );
+
+      if (response.success) {
+        set({
+          currentJob: response.job,
+          jobLoading: false,
+          error: null,
+        });
+
+        // Update job history
+        set((state) => ({
+          jobHistory: state.jobHistory.map((job) =>
+            job.job_id === jobId ? response.job : job,
+          ),
+        }));
+
+        return response;
+      } else {
+        throw new Error("Failed to retry failed emails");
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to retry failed emails";
+      set({ jobLoading: false, error: errorMessage });
+      throw new Error(errorMessage);
+    }
+  },
+
+  // ✨ NEW: Start Polling Job Status
+  startJobPolling: (jobId: string) => {
+    set({
+      isPollingJob: true,
+      pollingJobId: jobId,
+    });
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const job = await get().checkJobStatus(jobId);
+
+        // Stop polling if job is completed or failed
+        if (job.status === "completed" || job.status === "failed") {
+          clearInterval(pollInterval);
+          set({
+            isPollingJob: false,
+            pollingJobId: null,
+          });
+        }
+      } catch (error) {
+        console.error("Polling error:", error);
+        clearInterval(pollInterval);
+        set({
+          isPollingJob: false,
+          pollingJobId: null,
+        });
+      }
+    }, 5000); // Poll every 5 seconds
+
+    // Store interval for cleanup
+    (set as any).pollInterval = pollInterval;
+  },
+
+  // ✨ NEW: Stop Polling
+  stopJobPolling: () => {
+    set({
+      isPollingJob: false,
+      pollingJobId: null,
+    });
+  },
+
+  // ✨ NEW: Clear Current Job
+  clearCurrentJob: () => {
+    set({
+      currentJob: null,
+    });
+  },
 }));

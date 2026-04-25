@@ -101,7 +101,7 @@ const apiCall = async (endpoint: string, options: RequestInit = {}) => {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(
-      errorData.message || `HTTP error! status: ${response.status}`
+      errorData.message || `HTTP error! status: ${response.status}`,
     );
   }
 
@@ -260,7 +260,7 @@ export default function Members() {
         console.log("Check-in successful:", response.message);
         // Optionally show a success message
         alert(
-          `Check-in recorded! ${response.visit_info.remaining_visits} visits remaining.`
+          `Check-in recorded! ${response.visit_info.remaining_visits} visits remaining.`,
         );
 
         // Refresh users to show updated data
@@ -270,7 +270,7 @@ export default function Members() {
       console.error("Failed to check in user:", error);
       alert(
         "Failed to check in user: " +
-          (error instanceof Error ? error.message : "Unknown error")
+          (error instanceof Error ? error.message : "Unknown error"),
       );
     } finally {
       setCheckinLoading(false);
@@ -280,8 +280,7 @@ export default function Members() {
 
   const executePauseMembership = async () => {
     if (!pausingUser) return;
-
-    setPauseLoading(true);
+    setPauseLoading(true); 
     try {
       const response = await apiCall(`/memberships/${pausingUser.id}/pause`, {
         method: "POST",
@@ -302,7 +301,7 @@ export default function Members() {
       console.error("Failed to pause membership:", error);
       alert(
         "Failed to pause membership: " +
-          (error instanceof Error ? error.message : "Unknown error")
+          (error instanceof Error ? error.message : "Unknown error"),
       );
     } finally {
       setPauseLoading(false);
@@ -318,7 +317,7 @@ export default function Members() {
         `/memberships/${unpausingUser.id}/unpause`,
         {
           method: "POST",
-        }
+        },
       );
 
       if (response.success) {
@@ -334,7 +333,7 @@ export default function Members() {
       console.error("Failed to unpause membership:", error);
       alert(
         "Failed to unpause membership: " +
-          (error instanceof Error ? error.message : "Unknown error")
+          (error instanceof Error ? error.message : "Unknown error"),
       );
     } finally {
       setUnpauseLoading(false);

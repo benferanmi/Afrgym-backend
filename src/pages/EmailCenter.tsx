@@ -40,6 +40,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Search,
+  Briefcase,
+  Hourglass,
+  AlertTriangle,
+  RotateCcw,
 } from "lucide-react";
 import { useUsersStore } from "@/stores/usersStore";
 import {
@@ -48,9 +52,11 @@ import {
   SingleEmailPayload,
   BulkEmailPayload,
   BulkEmailByCategoryPayload,
+  BulkJob,
 } from "@/stores/emailStore";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
+import { Progress } from "@/components/ui/progress";
 
 type RecipientType =
   | "all"
@@ -94,6 +100,12 @@ export default function EmailCenter() {
     loadingStats,
     error,
     logsHasMore,
+    currentJob,
+    jobHistory,
+    jobHistoryTotal,
+    jobLoading,
+    jobHistoryLoading,
+    isPollingJob,
     fetchTemplates,
     sendSingleEmail,
     sendBulkEmail,
@@ -104,14 +116,17 @@ export default function EmailCenter() {
     clearError,
     resetLogs,
     sendBulkEmailByCategory,
+    checkJobStatus,
+    fetchJobHistory,
+    retryFailedEmails,
+    clearCurrentJob,
   } = useEmailStore();
 
-  // Extract unique membership levels from users
   const membershipLevels: MembershipLevel[] = Array.from(
     new Map(
       users
         .filter(
-          (user) => user.membership.level_id && user.membership.level_name
+          (user) => user.membership.level_id && user.membership.level_name,
         )
         .map((user) => [
           user.membership.level_id,
@@ -119,15 +134,13 @@ export default function EmailCenter() {
             id: parseInt(user.membership.level_id!),
             name: user.membership.level_name,
           },
-        ])
-    ).values()
+        ]),
+    ).values(),
   );
 
-  // All users state (for pagination in specific member selection)
   const [allUsers, setAllUsers] = useState<typeof users>([]);
   const [loadingAllUsers, setLoadingAllUsers] = useState(false);
 
-  // Form state
   const [selectedTemplate, setSelectedTemplate] =
     useState<StoreEmailTemplate | null>(null);
   const [selectedTemplateKey, setSelectedTemplateKey] = useState("");
@@ -137,18 +150,16 @@ export default function EmailCenter() {
     useState<RecipientType>("all");
   const [specificUserId, setSpecificUserId] = useState<string>("");
   const [selectedMembershipIds, setSelectedMembershipIds] = useState<string[]>(
-    []
+    [],
   );
 
-  // Pagination for specific member selection
   const [specificMemberPage, setSpecificMemberPage] = useState(1);
   const [specificMemberSearch, setSpecificMemberSearch] = useState("");
   const [specificMemberTotal, setSpecificMemberTotal] = useState(0);
   const [specificMemberTotalPages, setSpecificMemberTotalPages] = useState(1);
 
-  // UI state
   const [emailMode, setEmailMode] = useState<EmailMode>(
-    EmailModes.TEMPLATE_ONLY
+    EmailModes.TEMPLATE_ONLY,
   );
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
   const [testEmailDialogOpen, setTestEmailDialogOpen] = useState(false);
@@ -159,14 +170,17 @@ export default function EmailCenter() {
   } | null>(null);
   const [activeTab, setActiveTab] = useState("compose");
 
-  // Load all users for specific member selection with pagination
+  // ✨ NEW: Job details dialog
+  const [jobDetailsOpen, setJobDetailsOpen] = useState(false);
+  const [selectedJob, setSelectedJob] = useState<BulkJob | null>(null);
+
   const loadAllUsersForSelection = async (
     page: number = 1,
-    search: string = ""
+    search: string = "",
   ) => {
     setLoadingAllUsers(true);
     try {
-      await fetchUsers(page, search, 100); // 100 per page for better selection
+      await fetchUsers(page, search, 100);
       setAllUsers(users);
       setSpecificMemberTotal(users.length);
       setSpecificMemberTotalPages(Math.ceil(users.length / 20));
@@ -177,14 +191,13 @@ export default function EmailCenter() {
       setLoadingAllUsers(false);
     }
   };
-  // Initialize data
+
+  // ✨ NEW: Auto-refresh job history on mount
   useEffect(() => {
     const initializeData = async () => {
       try {
-        // Fetch recipient stats FIRST and independently (most critical for UI)
         fetchRecipientStats();
 
-        // Fetch other data in parallel
         const promises = [];
 
         if (!templates) {
@@ -197,6 +210,9 @@ export default function EmailCenter() {
           promises.push(fetchEmailStats());
         }
 
+        // ✨ NEW: Fetch job history on load
+        promises.push(fetchJobHistory(1));
+
         await Promise.all(promises);
       } catch (err) {
         console.error("Failed to initialize email data:", err);
@@ -206,7 +222,6 @@ export default function EmailCenter() {
     initializeData();
   }, []);
 
-  // Clear error automatically
   useEffect(() => {
     if (error) {
       const timer = setTimeout(() => clearError(), 5000);
@@ -216,18 +231,16 @@ export default function EmailCenter() {
 
   useEffect(() => {
     if (users.length === 0) {
-      fetchUsers(1, "", 100); // Load more users initially
+      fetchUsers(1, "", 100);
     }
   }, [fetchUsers, users.length]);
 
-  // Load all users when specific recipient type is selected
   useEffect(() => {
     if (selectedRecipients === "specific" && allUsers.length === 0) {
       loadAllUsersForSelection();
     }
   }, [selectedRecipients]);
 
-  // Handle search in specific member selection
   useEffect(() => {
     if (selectedRecipients === "specific") {
       const debounceTimer = setTimeout(() => {
@@ -239,7 +252,6 @@ export default function EmailCenter() {
     }
   }, [specificMemberSearch, selectedRecipients]);
 
-  // Determine email mode based on form state
   useEffect(() => {
     const hasTemplate = !!selectedTemplateKey;
     const hasCustomSubject = !!emailSubject.trim();
@@ -255,7 +267,6 @@ export default function EmailCenter() {
   }, [selectedTemplateKey, emailSubject, emailContent]);
 
   const handleTemplateSelect = (templateKey: string) => {
-    // Handle the "custom-none" option
     if (templateKey === "custom-none" || templateKey === "") {
       setSelectedTemplate(null);
       setSelectedTemplateKey("");
@@ -272,7 +283,6 @@ export default function EmailCenter() {
     setSelectedTemplate(template);
     setSelectedTemplateKey(templateKey);
 
-    // Only clear custom fields if switching to a different template
     if (emailMode === EmailModes.TEMPLATE_ONLY) {
       setEmailSubject("");
       setEmailContent("");
@@ -294,9 +304,8 @@ export default function EmailCenter() {
   const getRecipientUsers = () => {
     let targetUsers = users;
 
-    // For "all" recipients, ensure we have all users loaded
     if (selectedRecipients === "all" && users.length < 100) {
-      targetUsers = users; // Use what we have for now
+      targetUsers = users;
     }
 
     switch (selectedRecipients) {
@@ -304,12 +313,12 @@ export default function EmailCenter() {
         return targetUsers;
       case "active":
         return targetUsers.filter(
-          (u) => u.membership.is_active && !u.membership.is_paused
+          (u) => u.membership.is_active && !u.membership.is_paused,
         );
       case "inactive":
         return targetUsers.filter(
           (u) =>
-            !u.membership.is_active || u.membership.status === "no_membership"
+            !u.membership.is_active || u.membership.status === "no_membership",
         );
 
       case "expiring":
@@ -326,8 +335,8 @@ export default function EmailCenter() {
         if (selectedMembershipIds.length === 0) return [];
         return targetUsers.filter((u) =>
           selectedMembershipIds.includes(
-            u.membership.level_id?.toString() || ""
-          )
+            u.membership.level_id?.toString() || "",
+          ),
         );
       case "expired":
         return targetUsers.filter((u) => {
@@ -338,7 +347,7 @@ export default function EmailCenter() {
         });
       case "specific": {
         const user = (allUsers.length > 0 ? allUsers : targetUsers).find(
-          (u) => u.id.toString() === specificUserId
+          (u) => u.id.toString() === specificUserId,
         );
         return user ? [user] : [];
       }
@@ -348,16 +357,13 @@ export default function EmailCenter() {
   };
 
   const getRecipientCount = () => {
-    // For specific user selection, use local calculation since we have the actual user data
     if (selectedRecipients === "specific") {
       const recipients = getRecipientUsers();
       return recipients.length;
     }
 
-    // For all other recipient types, ONLY use API stats
-    // This ensures consistent counts from the backend database
     if (!recipientStats) {
-      return 0; // Return 0 while loading, not a calculated value
+      return 0;
     }
 
     switch (selectedRecipients) {
@@ -375,7 +381,7 @@ export default function EmailCenter() {
         if (selectedMembershipIds.length === 0) return 0;
         return recipientStats.by_membership
           .filter((level) =>
-            selectedMembershipIds.includes(level.id.toString())
+            selectedMembershipIds.includes(level.id.toString()),
           )
           .reduce((sum, level) => sum + level.count, 0);
       default:
@@ -408,21 +414,14 @@ export default function EmailCenter() {
     return true;
   };
 
-  /**
-   * UPDATED handleSendEmail function for EmailCenter.tsx
-   * Replace the existing handleSendEmail function with this optimized version
-   */
-
   const handleSendEmail = async () => {
     if (!validateForm()) return;
 
     try {
-      // For specific user, still use single/traditional bulk endpoint
       if (selectedRecipients === "specific") {
         const recipientUsers = getRecipientUsers();
 
         if (recipientUsers.length === 1) {
-          // Send single email
           const user = recipientUsers[0];
           const payload: SingleEmailPayload = {
             user_id: user.id,
@@ -440,7 +439,6 @@ export default function EmailCenter() {
           await sendSingleEmail(payload);
           toast.success("Email sent successfully!");
         } else {
-          // Multiple specific users - use traditional bulk
           const payload: BulkEmailPayload = {
             user_ids: recipientUsers.map((u) => u.id),
             custom_data: {},
@@ -454,21 +452,17 @@ export default function EmailCenter() {
 
           if (result.failed > 0) {
             toast.warning(
-              `Sent to ${result.sent} recipients, ${result.failed} failed`
+              `Sent to ${result.sent} recipients, ${result.failed} failed`,
             );
           } else {
             toast.success(
-              `Bulk email sent to ${result.sent} recipients successfully!`
+              `Bulk email sent to ${result.sent} recipients successfully!`,
             );
           }
         }
       } else {
-        // ✨ NEW: Use category-based bulk sending for all other recipient types
-        // This is much more efficient - no need to load all users!
-
         let recipient_type: BulkEmailByCategoryPayload["recipient_type"];
 
-        // Map frontend recipient type to backend category
         switch (selectedRecipients) {
           case "all":
             recipient_type = "all";
@@ -479,8 +473,8 @@ export default function EmailCenter() {
           case "inactive":
             recipient_type = "inactive";
             break;
-          case "expired": // ✨ NEW: Maps to backend 'expired' category
-            recipient_type = "expired"; // ✨ NEW
+          case "expired":
+            recipient_type = "expired";
             break;
           case "expiring":
             recipient_type = "expiring_7days";
@@ -497,7 +491,6 @@ export default function EmailCenter() {
           custom_data: {},
         };
 
-        // Add membership level IDs if applicable
         if (
           selectedRecipients === "membership" &&
           selectedMembershipIds.length > 0
@@ -505,21 +498,19 @@ export default function EmailCenter() {
           payload.membership_level_ids = selectedMembershipIds;
         }
 
-        // Add email content
         if (selectedTemplateKey) payload.template = selectedTemplateKey;
         if (emailSubject.trim()) payload.custom_subject = emailSubject;
         if (emailContent.trim()) payload.custom_content = emailContent;
 
-        // Send using new category-based endpoint
         const result = await sendBulkEmailByCategory(payload);
 
         if (result.failed > 0) {
           toast.warning(
-            `Sent to ${result.sent} recipients, ${result.failed} failed`
+            `Sent to ${result.sent} recipients, ${result.failed} failed`,
           );
         } else {
           toast.success(
-            `Bulk email sent to ${result.sent} recipients successfully!`
+            `Bulk email sent to ${result.sent} recipients successfully!`,
           );
         }
       }
@@ -535,7 +526,7 @@ export default function EmailCenter() {
   const handlePreviewEmail = async () => {
     if (!selectedTemplateKey && !emailSubject && !emailContent) {
       toast.error(
-        "Please select a template or enter custom content to preview"
+        "Please select a template or enter custom content to preview",
       );
       return;
     }
@@ -546,7 +537,6 @@ export default function EmailCenter() {
       if (emailSubject.trim()) payload.custom_subject = emailSubject;
       if (emailContent.trim()) payload.custom_content = emailContent;
 
-      // Use first recipient for realistic preview if available
       const recipients = getRecipientUsers();
       if (recipients.length > 0) {
         payload.user_id = recipients[0].id;
@@ -654,7 +644,40 @@ export default function EmailCenter() {
     }
   };
 
-  // Get filtered users for specific member selection
+  // ✨ NEW: Get job status icon and color
+  const getJobStatusIcon = (status: string) => {
+    switch (status) {
+      case "processing":
+        return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />;
+      case "completed":
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case "failed":
+        return <AlertTriangle className="h-4 w-4 text-red-500" />;
+      default:
+        return <Clock className="h-4 w-4 text-gray-500" />;
+    }
+  };
+
+  // ✨ NEW: Get job status badge variant
+  const getJobStatusBadgeVariant = (status: string) => {
+    switch (status) {
+      case "processing":
+        return "secondary";
+      case "completed":
+        return "default";
+      case "failed":
+        return "destructive";
+      default:
+        return "secondary";
+    }
+  };
+
+  // ✨ NEW: Calculate job progress percentage
+  const getJobProgressPercentage = (job: BulkJob) => {
+    if (job.total_users === 0) return 0;
+    return ((job.sent + job.failed) / job.total_users) * 100;
+  };
+
   const getFilteredUsersForSelection = () => {
     const targetUsers = allUsers.length > 0 ? allUsers : users;
 
@@ -668,7 +691,7 @@ export default function EmailCenter() {
         user.display_name.toLowerCase().includes(searchTerm) ||
         user.email.toLowerCase().includes(searchTerm) ||
         user.first_name.toLowerCase().includes(searchTerm) ||
-        user.last_name.toLowerCase().includes(searchTerm)
+        user.last_name.toLowerCase().includes(searchTerm),
     );
   };
 
@@ -713,72 +736,84 @@ export default function EmailCenter() {
         </Alert>
       )}
 
-      {/* Statistics Cards */}
-      {/* <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card>
+      {/* ✨ NEW: Current Job Status Card */}
+      {currentJob && currentJob.status === "processing" && (
+        <Card className="border-blue-200 bg-blue-50">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Mail className="w-5 h-5" />
-              Total Sent
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Hourglass className="w-5 h-5 text-blue-600 animate-spin" />
+                Bulk Email Job In Progress
+              </div>
+              <Badge variant="secondary">{currentJob.job_id}</Badge>
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {emailStats?.total_emails?.toLocaleString() || 0}
+          <CardContent className="space-y-4">
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm font-medium">Progress</span>
+                <span className="text-sm text-muted-foreground">
+                  {currentJob.sent + currentJob.failed} /{" "}
+                  {currentJob.total_users} sent
+                </span>
+              </div>
+              <Progress
+                value={getJobProgressPercentage(currentJob)}
+                className="h-2"
+              />
             </div>
-            <p className="text-sm text-muted-foreground">
-              Last {emailStats?.period_days || 30} days
-            </p>
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="w-5 h-5" />
-              Pending
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {emailStats?.by_status?.pending || 0}
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <p className="text-xs text-muted-foreground">Sent</p>
+                <p className="text-lg font-bold text-green-600">
+                  {currentJob.sent}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Failed</p>
+                <p className="text-lg font-bold text-red-600">
+                  {currentJob.failed}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Status</p>
+                <p className="text-sm font-medium">
+                  {currentJob.status === "processing"
+                    ? "Processing..."
+                    : currentJob.status}
+                </p>
+              </div>
             </div>
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CheckCircle className="w-5 h-5" />
-              Delivery Rate
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {emailStats?.delivery_rate || 0}%
-            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSelectedJob(currentJob);
+                setJobDetailsOpen(true);
+              }}
+            >
+              <Eye className="w-4 h-4 mr-2" />
+              View Details
+            </Button>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5" />
-              Total Members
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{users.length}</div>
-          </CardContent>
-        </Card>
-      </div> */}
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList>
           <TabsTrigger value="compose">Compose Email</TabsTrigger>
           <TabsTrigger value="templates">Templates</TabsTrigger>
           <TabsTrigger value="history">Email History</TabsTrigger>
-          {/* <TabsTrigger value="analytics">Analytics</TabsTrigger> */}
+          {/* ✨ NEW: Jobs Tab */}
+          <TabsTrigger value="jobs">
+            <Briefcase className="w-4 h-4 mr-2" />
+            Jobs
+            {jobHistory.some((j) => j.status === "processing") && (
+              <span className="ml-2 inline-flex h-2 w-2 rounded-full bg-blue-600 animate-pulse"></span>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="compose">
@@ -889,7 +924,6 @@ export default function EmailCenter() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  {/* Template Selection */}
                   <div>
                     <label className="text-sm font-medium mb-2 block">
                       Email Template (Optional)
@@ -921,7 +955,7 @@ export default function EmailCenter() {
                                 </SelectItem>
                               ))}
                             </div>
-                          )
+                          ),
                         )}
                       </SelectContent>
                     </Select>
@@ -956,7 +990,6 @@ export default function EmailCenter() {
                     )}
                   </div>
 
-                  {/* Email Subject */}
                   <div>
                     <label className="text-sm font-medium mb-2 block">
                       Email Subject
@@ -981,7 +1014,6 @@ export default function EmailCenter() {
                     />
                   </div>
 
-                  {/* Email Content */}
                   <div>
                     <label className="text-sm font-medium mb-2 block">
                       Email Content
@@ -1007,7 +1039,6 @@ export default function EmailCenter() {
                     />
                   </div>
 
-                  {/* Email Mode Indicator */}
                   <div className="flex items-center gap-2">
                     <Badge
                       variant={
@@ -1074,7 +1105,6 @@ export default function EmailCenter() {
                     </Select>
                   </div>
 
-                  {/* Membership Level Selection */}
                   {selectedRecipients === "membership" && (
                     <div>
                       <label className="text-sm font-medium mb-2 block">
@@ -1090,7 +1120,7 @@ export default function EmailCenter() {
                               type="checkbox"
                               id={`level-${level.id}`}
                               checked={selectedMembershipIds.includes(
-                                level.id.toString()
+                                level.id.toString(),
                               )}
                               onChange={(e) => {
                                 if (e.target.checked) {
@@ -1101,8 +1131,8 @@ export default function EmailCenter() {
                                 } else {
                                   setSelectedMembershipIds(
                                     selectedMembershipIds.filter(
-                                      (id) => id !== level.id.toString()
-                                    )
+                                      (id) => id !== level.id.toString(),
+                                    ),
                                   );
                                 }
                               }}
@@ -1120,14 +1150,12 @@ export default function EmailCenter() {
                     </div>
                   )}
 
-                  {/* Specific User Selection with Search and Pagination */}
                   {selectedRecipients === "specific" && (
                     <div className="space-y-3">
                       <label className="text-sm font-medium mb-2 block">
                         Select Member
                       </label>
 
-                      {/* Search Input */}
                       <div className="relative">
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
@@ -1140,7 +1168,6 @@ export default function EmailCenter() {
                         />
                       </div>
 
-                      {/* Loading State */}
                       {loadingAllUsers && (
                         <div className="flex items-center justify-center py-4">
                           <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -1150,7 +1177,6 @@ export default function EmailCenter() {
                         </div>
                       )}
 
-                      {/* Member Selection */}
                       <div className="border rounded-md max-h-64 overflow-y-auto">
                         {getFilteredUsersForSelection().map((user) => (
                           <div
@@ -1216,7 +1242,6 @@ export default function EmailCenter() {
                           )}
                       </div>
 
-                      {/* Pagination for Specific Member Selection */}
                       {specificMemberTotalPages > 1 && (
                         <div className="flex items-center justify-between">
                           <p className="text-xs text-muted-foreground">
@@ -1229,7 +1254,7 @@ export default function EmailCenter() {
                               size="sm"
                               onClick={() =>
                                 handleSpecificMemberPageChange(
-                                  specificMemberPage - 1
+                                  specificMemberPage - 1,
                                 )
                               }
                               disabled={
@@ -1243,7 +1268,7 @@ export default function EmailCenter() {
                               size="sm"
                               onClick={() =>
                                 handleSpecificMemberPageChange(
-                                  specificMemberPage + 1
+                                  specificMemberPage + 1,
                                 )
                               }
                               disabled={
@@ -1259,7 +1284,6 @@ export default function EmailCenter() {
                     </div>
                   )}
 
-                  {/* Recipient Count */}
                   <div className="bg-muted p-3 rounded-md">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">Recipients:</span>
@@ -1291,7 +1315,6 @@ export default function EmailCenter() {
                     )}
                   </div>
 
-                  {/* Send Button */}
                   <Button
                     onClick={handleSendEmail}
                     disabled={sendingEmail || getRecipientCount() === 0}
@@ -1428,7 +1451,7 @@ export default function EmailCenter() {
                         ))}
                       </div>
                     </div>
-                  )
+                  ),
                 )}
               </div>
             </CardContent>
@@ -1457,7 +1480,6 @@ export default function EmailCenter() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {/* Filters */}
                 <div className="flex gap-4 flex-wrap">
                   <Select defaultValue="all">
                     <SelectTrigger className="w-48">
@@ -1490,7 +1512,6 @@ export default function EmailCenter() {
                   <Input placeholder="Search recipient..." className="w-48" />
                 </div>
 
-                {/* Email Logs Table */}
                 <div className="border rounded-lg">
                   <div className="overflow-x-auto">
                     <table className="w-full">
@@ -1602,7 +1623,6 @@ export default function EmailCenter() {
                   </div>
                 </div>
 
-                {/* Pagination */}
                 <div className="flex items-center justify-between">
                   <p className="text-sm text-muted-foreground">
                     Showing {emailLogs.length} of {emailLogs.length} entries
@@ -1621,229 +1641,398 @@ export default function EmailCenter() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="analytics">
+        {/* ✨ NEW: Jobs Tab */}
+        <TabsContent value="jobs">
           <div className="space-y-6">
-            {/* Overview Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <Card>
+            {/* Current Processing Jobs */}
+            {jobHistory.filter((j) => j.status === "processing").length > 0 && (
+              <Card className="border-blue-200 bg-blue-50">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <TrendingUp className="w-5 h-5" />
-                    Delivery Rate
+                    <Hourglass className="w-5 h-5 text-blue-600 animate-spin" />
+                    Processing Jobs
                   </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-green-600">
-                    {emailStats?.delivery_rate || 0}%
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Last {emailStats?.period_days || 30} days
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5" />
-                    Total Emails
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold">
-                    {emailStats?.total_emails?.toLocaleString() || 0}
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Since{" "}
-                    {emailStats?.date_from
-                      ? new Date(emailStats.date_from).toLocaleDateString()
-                      : "N/A"}
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Zap className="w-5 h-5" />
-                    Daily Average
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold">
-                    {emailStats
-                      ? Math.round(
-                          emailStats.total_emails / emailStats.period_days
-                        )
-                      : 0}
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Emails per day
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Charts */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Email Status Distribution */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Email Status Distribution</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {emailStats?.by_status &&
-                      Object.entries(emailStats.by_status).map(
-                        ([status, count]) => (
-                          <div
-                            key={status}
-                            className="flex items-center justify-between"
-                          >
-                            <div className="flex items-center gap-2">
-                              {getStatusIcon(status)}
-                              <span className="capitalize font-medium">
-                                {status}
+                    {jobHistory
+                      .filter((j) => j.status === "processing")
+                      .map((job) => (
+                        <div
+                          key={job.job_id}
+                          className="border rounded-lg p-4 bg-white"
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <div>
+                              <p className="font-medium">
+                                Job ID: {job.job_id}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Started: {formatDate(job.started_at)}
+                              </p>
+                            </div>
+                            <Badge variant="secondary">Processing...</Badge>
+                          </div>
+
+                          <div className="mb-3">
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-sm font-medium">
+                                Progress
+                              </span>
+                              <span className="text-sm text-muted-foreground">
+                                {job.sent + job.failed} / {job.total_users}
                               </span>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <div className="w-24 bg-gray-200 rounded-full h-2">
-                                <div
-                                  className={`h-2 rounded-full ${
-                                    status === "sent"
-                                      ? "bg-green-500"
-                                      : status === "pending"
-                                      ? "bg-yellow-500"
-                                      : "bg-red-500"
-                                  }`}
-                                  style={{
-                                    width: `${
-                                      emailStats
-                                        ? (count / emailStats.total_emails) *
-                                          100
-                                        : 0
-                                    }%`,
-                                  }}
-                                ></div>
-                              </div>
-                              <span className="text-sm font-medium w-12 text-right">
-                                {count}
-                              </span>
+                            <Progress
+                              value={getJobProgressPercentage(job)}
+                              className="h-2"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-4 mb-4">
+                            <div className="text-center">
+                              <p className="text-xs text-muted-foreground">
+                                Sent
+                              </p>
+                              <p className="text-lg font-bold text-green-600">
+                                {job.sent}
+                              </p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-xs text-muted-foreground">
+                                Failed
+                              </p>
+                              <p className="text-lg font-bold text-red-600">
+                                {job.failed}
+                              </p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-xs text-muted-foreground">
+                                Remaining
+                              </p>
+                              <p className="text-lg font-bold">
+                                {job.total_users - (job.sent + job.failed)}
+                              </p>
                             </div>
                           </div>
-                        )
-                      )}
+
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedJob(job);
+                              setJobDetailsOpen(true);
+                            }}
+                          >
+                            <Eye className="w-4 h-4 mr-2" />
+                            View Details
+                          </Button>
+                        </div>
+                      ))}
                   </div>
                 </CardContent>
               </Card>
+            )}
 
-              {/* Template Usage */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Template Usage</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {emailStats?.by_template &&
-                      Object.entries(emailStats.by_template)
-                        .sort(([, a], [, b]) => b - a)
-                        .map(([template, count]) => (
-                          <div
-                            key={template}
-                            className="flex items-center justify-between"
-                          >
-                            <span className="capitalize font-medium">
-                              {template}
-                            </span>
-                            <div className="flex items-center gap-2">
-                              <div className="w-24 bg-gray-200 rounded-full h-2">
-                                <div
-                                  className="h-2 rounded-full bg-blue-500"
-                                  style={{
-                                    width: `${
-                                      emailStats
-                                        ? (count / emailStats.total_emails) *
-                                          100
-                                        : 0
-                                    }%`,
-                                  }}
-                                ></div>
-                              </div>
-                              <span className="text-sm font-medium w-12 text-right">
-                                {count}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Daily Activity Chart */}
+            {/* Completed Jobs */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
-                  Daily Email Activity
-                  <Select defaultValue="period-7">
-                    <SelectTrigger className="w-32">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="period-7">Last 7 days</SelectItem>
-                      <SelectItem value="period-30">Last 30 days</SelectItem>
-                      <SelectItem value="period-90">Last 90 days</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="flex items-center gap-2">
+                    <Briefcase className="w-5 h-5" />
+                    Bulk Email Jobs
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchJobHistory(1)}
+                    disabled={jobHistoryLoading}
+                  >
+                    <RefreshCw
+                      className={`w-4 h-4 ${
+                        jobHistoryLoading ? "animate-spin" : ""
+                      }`}
+                    />
+                  </Button>
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  <div className="h-64 flex items-end justify-between gap-2 border-b pb-4">
-                    {emailStats?.daily_count?.map((day, index) => {
-                      const maxCount = Math.max(
-                        ...emailStats.daily_count.map((d) => d.count)
-                      );
-                      const height =
-                        maxCount > 0 ? (day.count / maxCount) * 200 : 4;
-
-                      return (
-                        <div
-                          key={index}
-                          className="flex flex-col items-center gap-1 flex-1"
-                        >
-                          <div className="text-xs text-muted-foreground">
-                            {day.count}
-                          </div>
-                          <div
-                            className="w-full bg-blue-500 rounded-t hover:bg-blue-600 transition-colors min-h-[4px]"
-                            style={{ height: `${height}px` }}
-                            title={`${new Date(
-                              day.date
-                            ).toLocaleDateString()}: ${day.count} emails`}
-                          ></div>
-                          <div className="text-xs text-muted-foreground transform -rotate-45 origin-left mt-1">
-                            {new Date(day.date).toLocaleDateString("en-US", {
-                              month: "short",
-                              day: "numeric",
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
+                {jobHistoryLoading && jobHistory.length === 0 ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                    <span className="text-muted-foreground">
+                      Loading job history...
+                    </span>
                   </div>
-                  <div className="flex justify-center">
+                ) : jobHistory.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Briefcase className="h-12 w-12 text-muted-foreground mx-auto mb-2 opacity-50" />
+                    <p className="text-muted-foreground">No jobs yet</p>
                     <p className="text-sm text-muted-foreground">
-                      Email activity over the last{" "}
-                      {emailStats?.daily_count?.length || 0} days
+                      Send a bulk email to see job history here
                     </p>
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-3">
+                    {jobHistory.map((job) => (
+                      <div
+                        key={job.job_id}
+                        className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            {getJobStatusIcon(job.status)}
+                            <div>
+                              <p className="font-medium text-sm">
+                                {job.job_id}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {formatDate(job.started_at)}
+                              </p>
+                            </div>
+                          </div>
+                          <Badge variant={getJobStatusBadgeVariant(job.status)}>
+                            {job.status}
+                          </Badge>
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-3 mb-3">
+                          <div>
+                            <p className="text-xs text-muted-foreground">
+                              Total
+                            </p>
+                            <p className="font-medium">{job.total_users}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">
+                              Sent
+                            </p>
+                            <p className="font-medium text-green-600">
+                              {job.sent}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">
+                              Failed
+                            </p>
+                            <p className="font-medium text-red-600">
+                              {job.failed}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">
+                              Rate
+                            </p>
+                            <p className="font-medium">
+                              {job.total_users > 0
+                                ? Math.round((job.sent / job.total_users) * 100)
+                                : 0}
+                              %
+                            </p>
+                          </div>
+                        </div>
+
+                        {job.status !== "processing" && (
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedJob(job);
+                                setJobDetailsOpen(true);
+                              }}
+                            >
+                              <Eye className="w-4 h-4 mr-1" />
+                              Details
+                            </Button>
+                            {job.failed > 0 && job.status === "completed" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={async () => {
+                                  try {
+                                    await retryFailedEmails(job.job_id);
+                                    toast.success("Retrying failed emails...");
+                                  } catch (error) {
+                                    toast.error("Failed to retry emails");
+                                  }
+                                }}
+                                disabled={jobLoading}
+                              >
+                                {jobLoading ? (
+                                  <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                                ) : (
+                                  <RotateCcw className="w-4 h-4 mr-1" />
+                                )}
+                                Retry Failed
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* ✨ NEW: Job Details Modal */}
+      <Dialog open={jobDetailsOpen} onOpenChange={setJobDetailsOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Job Details</DialogTitle>
+          </DialogHeader>
+
+          {selectedJob && (
+            <div className="space-y-6">
+              {/* Header */}
+              <div className="border-b pb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Job ID:</p>
+                    <p className="font-mono text-sm">{selectedJob.job_id}</p>
+                  </div>
+                  <div className="text-right">
+                    <Badge
+                      variant={getJobStatusBadgeVariant(selectedJob.status)}
+                    >
+                      {selectedJob.status}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              {/* Timeline */}
+              <div>
+                <p className="text-sm font-medium mb-2">Timeline</p>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Started:</span>
+                    <span>{formatDate(selectedJob.started_at)}</span>
+                  </div>
+                  {selectedJob.completed_at && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Completed:</span>
+                      <span>{formatDate(selectedJob.completed_at)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Progress */}
+              <div>
+                <p className="text-sm font-medium mb-3">Progress</p>
+                <Progress
+                  value={getJobProgressPercentage(selectedJob)}
+                  className="h-2 mb-3"
+                />
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground">Total</p>
+                    <p className="text-xl font-bold">
+                      {selectedJob.total_users}
+                    </p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground">Sent</p>
+                    <p className="text-xl font-bold text-green-600">
+                      {selectedJob.sent}
+                    </p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground">Failed</p>
+                    <p className="text-xl font-bold text-red-600">
+                      {selectedJob.failed}
+                    </p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground">
+                      Success Rate
+                    </p>
+                    <p className="text-xl font-bold">
+                      {selectedJob.total_users > 0
+                        ? Math.round(
+                            (selectedJob.sent / selectedJob.total_users) * 100,
+                          )
+                        : 0}
+                      %
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Failed Emails */}
+              {selectedJob.failed_users.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium mb-2">Failed Emails</p>
+                  <div className="border rounded-lg max-h-64 overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="border-b bg-muted/50 sticky top-0">
+                        <tr>
+                          <th className="p-2 text-left">Email</th>
+                          <th className="p-2 text-left">Error</th>
+                          <th className="p-2 text-center">Retries</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedJob.failed_users.map((failedUser, idx) => (
+                          <tr key={idx} className="border-b hover:bg-muted/50">
+                            <td className="p-2">
+                              <p className="text-xs font-medium">
+                                {failedUser.display_name || failedUser.email}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {failedUser.email}
+                              </p>
+                            </td>
+                            <td className="p-2">
+                              <p className="text-xs text-red-600 truncate">
+                                {failedUser.error}
+                              </p>
+                            </td>
+                            <td className="p-2 text-center">
+                              <p className="text-xs">
+                                {failedUser.retry_count || 0}/3
+                              </p>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Actions */}
+              {selectedJob.status === "completed" && selectedJob.failed > 0 && (
+                <Button
+                  onClick={async () => {
+                    try {
+                      await retryFailedEmails(selectedJob.job_id);
+                      toast.success("Retrying failed emails...");
+                      setJobDetailsOpen(false);
+                    } catch (error) {
+                      toast.error("Failed to retry emails");
+                    }
+                  }}
+                  disabled={jobLoading}
+                  className="w-full"
+                >
+                  {jobLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : (
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                  )}
+                  Retry All Failed ({selectedJob.failed})
+                </Button>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
