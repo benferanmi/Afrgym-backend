@@ -148,7 +148,7 @@ export default function EmailCenter() {
   const [emailContent, setEmailContent] = useState("");
   const [selectedRecipients, setSelectedRecipients] =
     useState<RecipientType>("all");
-  const [specificUserId, setSpecificUserId] = useState<string>("");
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]); // Changed to array
   const [selectedMembershipIds, setSelectedMembershipIds] = useState<string[]>(
     [],
   );
@@ -241,16 +241,6 @@ export default function EmailCenter() {
     }
   }, [selectedRecipients]);
 
-  useEffect(() => {
-    if (selectedRecipients === "specific") {
-      const debounceTimer = setTimeout(() => {
-        loadAllUsersForSelection(1, specificMemberSearch);
-        setSpecificMemberPage(1);
-      }, 300);
-
-      return () => clearTimeout(debounceTimer);
-    }
-  }, [specificMemberSearch, selectedRecipients]);
 
   useEffect(() => {
     const hasTemplate = !!selectedTemplateKey;
@@ -295,7 +285,7 @@ export default function EmailCenter() {
     setEmailSubject("");
     setEmailContent("");
     setSelectedRecipients("all");
-    setSpecificUserId("");
+    setSelectedUserIds([]); // Changed
     setSelectedMembershipIds([]);
     setSpecificMemberSearch("");
     setSpecificMemberPage(1);
@@ -346,10 +336,10 @@ export default function EmailCenter() {
           return expiryDate < today && u.membership.status !== "no_membership";
         });
       case "specific": {
-        const user = (allUsers.length > 0 ? allUsers : targetUsers).find(
-          (u) => u.id.toString() === specificUserId,
+        const usersPool = allUsers.length > 0 ? allUsers : targetUsers;
+        return usersPool.filter((u) =>
+          selectedUserIds.includes(u.id.toString()),
         );
-        return user ? [user] : [];
       }
       default:
         return [];
@@ -1150,7 +1140,10 @@ export default function EmailCenter() {
                   {selectedRecipients === "specific" && (
                     <div className="space-y-3">
                       <label className="text-sm font-medium mb-2 block">
-                        Select Member
+                        Select Members
+                        <span className="text-muted-foreground text-xs ml-2">
+                          ({selectedUserIds.length} selected)
+                        </span>
                       </label>
 
                       <div className="relative">
@@ -1179,21 +1172,39 @@ export default function EmailCenter() {
                           <div
                             key={user.id}
                             className={`flex items-center space-x-3 p-3 hover:bg-muted/50 cursor-pointer border-b last:border-b-0 ${
-                              specificUserId === user.id.toString()
+                              selectedUserIds.includes(user.id.toString())
                                 ? "bg-muted"
                                 : ""
                             }`}
-                            onClick={() =>
-                              setSpecificUserId(user.id.toString())
-                            }
+                            onClick={() => {
+                              setSelectedUserIds((prev) => {
+                                const userIdStr = user.id.toString();
+                                if (prev.includes(userIdStr)) {
+                                  return prev.filter((id) => id !== userIdStr);
+                                } else {
+                                  return [...prev, userIdStr];
+                                }
+                              });
+                            }}
                           >
                             <input
-                              type="radio"
-                              name="specific-member"
-                              checked={specificUserId === user.id.toString()}
-                              onChange={() =>
-                                setSpecificUserId(user.id.toString())
-                              }
+                              type="checkbox"
+                              checked={selectedUserIds.includes(
+                                user.id.toString(),
+                              )}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                setSelectedUserIds((prev) => {
+                                  const userIdStr = user.id.toString();
+                                  if (prev.includes(userIdStr)) {
+                                    return prev.filter(
+                                      (id) => id !== userIdStr,
+                                    );
+                                  } else {
+                                    return [...prev, userIdStr];
+                                  }
+                                });
+                              }}
                               className="rounded"
                             />
                             <div className="flex-1 min-w-0">
