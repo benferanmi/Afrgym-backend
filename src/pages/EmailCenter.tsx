@@ -1316,11 +1316,11 @@ export default function EmailCenter() {
                           ✓ Count from database
                         </p>
                       )}
-                    {selectedRecipients === "specific" && specificUserId && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        ✓ User selected
-                      </p>
-                    )}
+                    {selectedRecipients === "specific" && selectedUserIds.length > 0 && (
+  <p className="text-xs text-muted-foreground mt-1">
+    ✓ User selected
+  </p>
+)}
                   </div>
 
                   <Button
