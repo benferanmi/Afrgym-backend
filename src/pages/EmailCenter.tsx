@@ -405,8 +405,8 @@ export default function EmailCenter() {
       return false;
     }
 
-    const recipientUsers = getRecipientUsers();
-    if (recipientUsers.length === 0) {
+    const count = getRecipientCount();
+    if (count === 0) {
       toast.error("No recipients selected");
       return false;
     }
@@ -450,15 +450,9 @@ export default function EmailCenter() {
 
           const result = await sendBulkEmail(payload);
 
-          if (result.failed > 0) {
-            toast.warning(
-              `Sent to ${result.sent} recipients, ${result.failed} failed`,
-            );
-          } else {
-            toast.success(
-              `Bulk email sent to ${result.sent} recipients successfully!`,
-            );
-          }
+          toast.success(
+            `Bulk email job started for ${result.total_users ?? getRecipientCount()} recipients. Check the Jobs tab for progress.`,
+          );
         }
       } else {
         let recipient_type: BulkEmailByCategoryPayload["recipient_type"];
@@ -861,9 +855,12 @@ export default function EmailCenter() {
                                 <label className="text-sm font-medium">
                                   Content:
                                 </label>
-                                <div className="text-sm bg-muted p-4 rounded max-h-96 overflow-y-auto">
-                                  {previewContent.content}
-                                </div>
+                                <div
+                                  className="text-sm bg-muted p-4 rounded max-h-96 overflow-y-auto"
+                                  dangerouslySetInnerHTML={{
+                                    __html: previewContent.content,
+                                  }}
+                                ></div>
                               </div>
                             </div>
                           )}

@@ -302,6 +302,7 @@ interface EmailState {
   // Polling
   isPollingJob: boolean;
   pollingJobId: string | null;
+  pollingInterval: ReturnType<typeof setInterval> | null;
 
   // Actions
   fetchTemplates: () => Promise<EmailTemplatesResponse>;
@@ -328,6 +329,7 @@ interface EmailState {
   fetchJobHistory: (page?: number, limit?: number) => Promise<void>;
   retryFailedEmails: (jobId: string) => Promise<RetryFailedResponse>;
   startJobPolling: (jobId: string) => void;
+
   stopJobPolling: () => void;
   clearCurrentJob: () => void;
 }
@@ -362,6 +364,7 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   // Polling
   isPollingJob: false,
   pollingJobId: null,
+  pollingInterval: null,
 
   fetchTemplates: async () => {
     set({ loading: true, error: null });
@@ -718,46 +721,54 @@ export const useEmailStore = create<EmailState>((set, get) => ({
     }
   },
 
-  // ✨ NEW: Start Polling Job Status
   startJobPolling: (jobId: string) => {
-    set({
-      isPollingJob: true,
-      pollingJobId: jobId,
-    });
+    const existing = get().pollingInterval;
+    if (existing) clearInterval(existing);
 
     const pollInterval = setInterval(async () => {
       try {
-        const job = await get().checkJobStatus(jobId);
+        const response: BulkJobResponse = await apiCall(`/bulk-jobs/${jobId}`);
+        if (!response.success) return;
 
-        // Stop polling if job is completed or failed
+        const job = response.job;
+
+        set((state) => ({
+          currentJob: job,
+          jobHistory: state.jobHistory.map((j) =>
+            j.job_id === jobId ? job : j,
+          ),
+        }));
+
         if (job.status === "completed" || job.status === "failed") {
-          clearInterval(pollInterval);
+          const interval = get().pollingInterval;
+          if (interval) clearInterval(interval);
           set({
             isPollingJob: false,
             pollingJobId: null,
+            pollingInterval: null,
           });
+          get().fetchJobHistory(1);
         }
       } catch (error) {
-        console.error("Polling error:", error);
-        clearInterval(pollInterval);
-        set({
-          isPollingJob: false,
-          pollingJobId: null,
-        });
+        const interval = get().pollingInterval;
+        if (interval) clearInterval(interval);
+        set({ isPollingJob: false, pollingJobId: null, pollingInterval: null });
       }
-    }, 5000); // Poll every 5 seconds
+    }, 5000);
 
-    // Store interval for cleanup
-    (set as any).pollInterval = pollInterval;
-  },
-
-  // ✨ NEW: Stop Polling
-  stopJobPolling: () => {
     set({
-      isPollingJob: false,
-      pollingJobId: null,
+      isPollingJob: true,
+      pollingJobId: jobId,
+      pollingInterval: pollInterval,
     });
   },
+
+  stopJobPolling: () => {
+    const existing = get().pollingInterval;
+    if (existing) clearInterval(existing);
+    set({ isPollingJob: false, pollingJobId: null, pollingInterval: null });
+  },
+  // ✨ NEW: Stop Pollin
 
   // ✨ NEW: Clear Current Job
   clearCurrentJob: () => {
