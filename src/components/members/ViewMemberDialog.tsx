@@ -338,7 +338,7 @@ export function ViewMemberDialog({
               )}
 
               {/* Pause Information */}
-              {user.membership.is_paused && user.membership.pause_info && (
+              {/* {user.membership.is_paused && user.membership.pause_info && (
                 <div className="bg-yellow-50 p-4 rounded-lg space-y-3">
                   <h5 className="font-medium flex items-center gap-2">
                     <Pause className="h-4 w-4" />
@@ -385,7 +385,6 @@ export function ViewMemberDialog({
                     </div>
                   )}
 
-                  {/* Pause history */}
                   {user.membership.pause_info.pause_history.length > 0 && (
                     <div className="space-y-2">
                       <label className="text-sm font-medium">
@@ -414,7 +413,7 @@ export function ViewMemberDialog({
                     </div>
                   )}
                 </div>
-              )}
+              )} */}
 
               {user.membership.description && (
                 <div className="space-y-2">

@@ -44,6 +44,7 @@ import {
   Hourglass,
   AlertTriangle,
   RotateCcw,
+  X,
 } from "lucide-react";
 import { useUsersStore } from "@/stores/usersStore";
 import {
@@ -138,8 +139,8 @@ export default function EmailCenter() {
     ).values(),
   );
 
-  const [allUsers, setAllUsers] = useState<typeof users>([]);
-  const [loadingAllUsers, setLoadingAllUsers] = useState(false);
+  // ✅ REMOVED: allUsers and loadingAllUsers states — was causing stale closure bug.
+  // We now use `users` from the store directly (reactive, always up-to-date).
 
   const [selectedTemplate, setSelectedTemplate] =
     useState<StoreEmailTemplate | null>(null);
@@ -148,15 +149,12 @@ export default function EmailCenter() {
   const [emailContent, setEmailContent] = useState("");
   const [selectedRecipients, setSelectedRecipients] =
     useState<RecipientType>("all");
-  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]); // Changed to array
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [selectedMembershipIds, setSelectedMembershipIds] = useState<string[]>(
     [],
   );
 
-  const [specificMemberPage, setSpecificMemberPage] = useState(1);
   const [specificMemberSearch, setSpecificMemberSearch] = useState("");
-  const [specificMemberTotal, setSpecificMemberTotal] = useState(0);
-  const [specificMemberTotalPages, setSpecificMemberTotalPages] = useState(1);
 
   const [emailMode, setEmailMode] = useState<EmailMode>(
     EmailModes.TEMPLATE_ONLY,
@@ -170,29 +168,13 @@ export default function EmailCenter() {
   } | null>(null);
   const [activeTab, setActiveTab] = useState("compose");
 
-  // ✨ NEW: Job details dialog
   const [jobDetailsOpen, setJobDetailsOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<BulkJob | null>(null);
 
-  const loadAllUsersForSelection = async (
-    page: number = 1,
-    search: string = "",
-  ) => {
-    setLoadingAllUsers(true);
-    try {
-      await fetchUsers(page, search, 100);
-      setAllUsers(users);
-      setSpecificMemberTotal(users.length);
-      setSpecificMemberTotalPages(Math.ceil(users.length / 20));
-    } catch (error) {
-      console.error("Failed to load users for selection:", error);
-      toast.error("Failed to load users");
-    } finally {
-      setLoadingAllUsers(false);
-    }
-  };
+  // ✅ FIXED: No longer needed — removed loadAllUsersForSelection which had a
+  // stale closure bug (setAllUsers(users) captured old render-time value of users).
+  // fetchUsers already updates the reactive `users` from the store.
 
-  // ✨ NEW: Auto-refresh job history on mount
   useEffect(() => {
     const initializeData = async () => {
       try {
@@ -210,7 +192,6 @@ export default function EmailCenter() {
           promises.push(fetchEmailStats());
         }
 
-        // ✨ NEW: Fetch job history on load
         promises.push(fetchJobHistory(1));
 
         await Promise.all(promises);
@@ -235,12 +216,13 @@ export default function EmailCenter() {
     }
   }, [fetchUsers, users.length]);
 
+  // ✅ FIXED: was calling loadAllUsersForSelection() which had the stale closure bug.
+  // Now we simply ensure fetchUsers has been called when switching to "specific" mode.
   useEffect(() => {
-    if (selectedRecipients === "specific" && allUsers.length === 0) {
-      loadAllUsersForSelection();
+    if (selectedRecipients === "specific" && users.length === 0) {
+      fetchUsers(1, "", 100);
     }
   }, [selectedRecipients]);
-
 
   useEffect(() => {
     const hasTemplate = !!selectedTemplateKey;
@@ -285,18 +267,13 @@ export default function EmailCenter() {
     setEmailSubject("");
     setEmailContent("");
     setSelectedRecipients("all");
-    setSelectedUserIds([]); // Changed
+    setSelectedUserIds([]);
     setSelectedMembershipIds([]);
     setSpecificMemberSearch("");
-    setSpecificMemberPage(1);
   };
 
   const getRecipientUsers = () => {
-    let targetUsers = users;
-
-    if (selectedRecipients === "all" && users.length < 100) {
-      targetUsers = users;
-    }
+    const targetUsers = users;
 
     switch (selectedRecipients) {
       case "all":
@@ -310,7 +287,6 @@ export default function EmailCenter() {
           (u) =>
             !u.membership.is_active || u.membership.status === "no_membership",
         );
-
       case "expiring":
         return targetUsers.filter((u) => {
           if (!u.membership.expiry_date || !u.membership.is_active)
@@ -336,10 +312,8 @@ export default function EmailCenter() {
           return expiryDate < today && u.membership.status !== "no_membership";
         });
       case "specific": {
-        const usersPool = allUsers.length > 0 ? allUsers : targetUsers;
-        return usersPool.filter((u) =>
-          selectedUserIds.includes(u.id.toString()),
-        );
+        // ✅ FIXED: was using allUsers (stale) — now uses reactive `users` from store
+        return users.filter((u) => selectedUserIds.includes(u.id.toString()));
       }
       default:
         return [];
@@ -348,8 +322,7 @@ export default function EmailCenter() {
 
   const getRecipientCount = () => {
     if (selectedRecipients === "specific") {
-      const recipients = getRecipientUsers();
-      return recipients.length;
+      return selectedUserIds.length;
     }
 
     if (!recipientStats) {
@@ -565,11 +538,6 @@ export default function EmailCenter() {
     }
   };
 
-  const handleSpecificMemberPageChange = (newPage: number) => {
-    setSpecificMemberPage(newPage);
-    loadAllUsersForSelection(newPage, specificMemberSearch);
-  };
-
   const getTemplateArray = () => {
     if (!templates) return [];
     return Object.entries(templates).map(([key, template]) => ({
@@ -628,7 +596,6 @@ export default function EmailCenter() {
     }
   };
 
-  // ✨ NEW: Get job status icon and color
   const getJobStatusIcon = (status: string) => {
     switch (status) {
       case "processing":
@@ -642,7 +609,6 @@ export default function EmailCenter() {
     }
   };
 
-  // ✨ NEW: Get job status badge variant
   const getJobStatusBadgeVariant = (status: string) => {
     switch (status) {
       case "processing":
@@ -656,27 +622,40 @@ export default function EmailCenter() {
     }
   };
 
-  // ✨ NEW: Calculate job progress percentage
   const getJobProgressPercentage = (job: BulkJob) => {
     if (job.total_users === 0) return 0;
     return ((job.sent + job.failed) / job.total_users) * 100;
   };
 
+  // ✅ FIXED: Removed stale allUsers fallback — `users` from the store is reactive
+  // and always reflects the latest fetchUsers result.
   const getFilteredUsersForSelection = () => {
-    const targetUsers = allUsers.length > 0 ? allUsers : users;
-
     if (!specificMemberSearch.trim()) {
-      return targetUsers;
+      return users;
     }
-
     const searchTerm = specificMemberSearch.toLowerCase();
-    return targetUsers.filter(
+    return users.filter(
       (user) =>
-        user.display_name.toLowerCase().includes(searchTerm) ||
+        (user.display_name || "").toLowerCase().includes(searchTerm) ||
         user.email.toLowerCase().includes(searchTerm) ||
         user.first_name.toLowerCase().includes(searchTerm) ||
         user.last_name.toLowerCase().includes(searchTerm),
     );
+  };
+
+  // ✅ NEW: Get full user objects for currently selected IDs (for the selected panel)
+  const getSelectedUsers = () => {
+    return users.filter((u) => selectedUserIds.includes(u.id.toString()));
+  };
+
+  const toggleUserSelection = (userId: string) => {
+    setSelectedUserIds((prev) => {
+      if (prev.includes(userId)) {
+        return prev.filter((id) => id !== userId);
+      } else {
+        return [...prev, userId];
+      }
+    });
   };
 
   if (loading && !templates) {
@@ -720,7 +699,6 @@ export default function EmailCenter() {
         </Alert>
       )}
 
-      {/* ✨ NEW: Current Job Status Card */}
       {currentJob && currentJob.status === "processing" && (
         <Card className="border-blue-200 bg-blue-50">
           <CardHeader>
@@ -790,7 +768,6 @@ export default function EmailCenter() {
           <TabsTrigger value="compose">Compose Email</TabsTrigger>
           <TabsTrigger value="templates">Templates</TabsTrigger>
           <TabsTrigger value="history">Email History</TabsTrigger>
-          {/* ✨ NEW: Jobs Tab */}
           <TabsTrigger value="jobs">
             <Briefcase className="w-4 h-4 mr-2" />
             Jobs
@@ -1139,26 +1116,67 @@ export default function EmailCenter() {
 
                   {selectedRecipients === "specific" && (
                     <div className="space-y-3">
-                      <label className="text-sm font-medium mb-2 block">
-                        Select Members
-                        <span className="text-muted-foreground text-xs ml-2">
-                          ({selectedUserIds.length} selected)
-                        </span>
-                      </label>
+                      {/* ✅ NEW: Selected members panel — always visible, persists across searches */}
+                      {selectedUserIds.length > 0 && (
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-sm font-medium">
+                              Selected
+                              <span className="ml-1 text-xs text-muted-foreground">
+                                ({selectedUserIds.length})
+                              </span>
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedUserIds([])}
+                              className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                            >
+                              Clear all
+                            </button>
+                          </div>
+                          <div className="flex flex-wrap gap-1 p-2 bg-muted/40 border rounded-md max-h-28 overflow-y-auto">
+                            {getSelectedUsers().map((user) => (
+                              <span
+                                key={user.id}
+                                className="inline-flex items-center gap-1 bg-background border rounded-full px-2 py-0.5 text-xs"
+                              >
+                                {user.first_name} {user.last_name}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    toggleUserSelection(user.id.toString())
+                                  }
+                                  className="text-muted-foreground hover:text-destructive transition-colors ml-0.5"
+                                  aria-label={`Remove ${user.first_name}`}
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          placeholder="Search members..."
-                          value={specificMemberSearch}
-                          onChange={(e) =>
-                            setSpecificMemberSearch(e.target.value)
-                          }
-                          className="pl-9"
-                        />
+                      {/* Search input */}
+                      <div>
+                        <label className="text-sm font-medium mb-1.5 block">
+                          Search Members
+                        </label>
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            placeholder="Search by name or email..."
+                            value={specificMemberSearch}
+                            onChange={(e) =>
+                              setSpecificMemberSearch(e.target.value)
+                            }
+                            className="pl-9"
+                          />
+                        </div>
                       </div>
 
-                      {loadingAllUsers && (
+                      {/* ✅ FIXED: usersLoading replaces the removed loadingAllUsers */}
+                      {usersLoading && (
                         <div className="flex items-center justify-center py-4">
                           <Loader2 className="h-4 w-4 animate-spin mr-2" />
                           <span className="text-sm text-muted-foreground">
@@ -1167,126 +1185,77 @@ export default function EmailCenter() {
                         </div>
                       )}
 
-                      <div className="border rounded-md max-h-64 overflow-y-auto">
-                        {getFilteredUsersForSelection().map((user) => (
-                          <div
-                            key={user.id}
-                            className={`flex items-center space-x-3 p-3 hover:bg-muted/50 cursor-pointer border-b last:border-b-0 ${
-                              selectedUserIds.includes(user.id.toString())
-                                ? "bg-muted"
-                                : ""
-                            }`}
-                            onClick={() => {
-                              setSelectedUserIds((prev) => {
-                                const userIdStr = user.id.toString();
-                                if (prev.includes(userIdStr)) {
-                                  return prev.filter((id) => id !== userIdStr);
-                                } else {
-                                  return [...prev, userIdStr];
+                      {/* Member list — filtered by search, excluding already-selected */}
+                      {!usersLoading && (
+                        <div className="border rounded-md max-h-64 overflow-y-auto">
+                          {getFilteredUsersForSelection()
+                            .filter(
+                              (u) => !selectedUserIds.includes(u.id.toString()),
+                            )
+                            .map((user) => (
+                              <div
+                                key={user.id}
+                                className="flex items-center space-x-3 p-3 hover:bg-muted/50 cursor-pointer border-b last:border-b-0"
+                                onClick={() =>
+                                  toggleUserSelection(user.id.toString())
                                 }
-                              });
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedUserIds.includes(
-                                user.id.toString(),
-                              )}
-                              onChange={(e) => {
-                                e.stopPropagation();
-                                setSelectedUserIds((prev) => {
-                                  const userIdStr = user.id.toString();
-                                  if (prev.includes(userIdStr)) {
-                                    return prev.filter(
-                                      (id) => id !== userIdStr,
-                                    );
-                                  } else {
-                                    return [...prev, userIdStr];
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={false}
+                                  onChange={() =>
+                                    toggleUserSelection(user.id.toString())
                                   }
-                                });
-                              }}
-                              className="rounded"
-                            />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate">
-                                {user.first_name} {user.last_name}
-                              </p>
-                              <p className="text-xs text-muted-foreground truncate">
-                                {user.email}
-                              </p>
-                              <div className="flex items-center gap-2 mt-1">
-                                <Badge variant="outline" className="text-xs">
-                                  {user.membership.level_name ||
-                                    "No Membership"}
-                                </Badge>
-                                {user.membership.is_active && (
-                                  <Badge
-                                    variant="secondary"
-                                    className="text-xs"
-                                  >
-                                    Active
-                                  </Badge>
-                                )}
-                                {user.membership.is_paused && (
-                                  <Badge
-                                    variant="secondary"
-                                    className="text-xs"
-                                  >
-                                    Paused
-                                  </Badge>
-                                )}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="rounded"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium truncate">
+                                    {user.first_name} {user.last_name}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground truncate">
+                                    {user.email}
+                                  </p>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <Badge
+                                      variant="outline"
+                                      className="text-xs"
+                                    >
+                                      {user.membership.level_name ||
+                                        "No Membership"}
+                                    </Badge>
+                                    {user.membership.is_active && (
+                                      <Badge
+                                        variant="secondary"
+                                        className="text-xs"
+                                      >
+                                        Active
+                                      </Badge>
+                                    )}
+                                    {user.membership.is_paused && (
+                                      <Badge
+                                        variant="secondary"
+                                        className="text-xs"
+                                      >
+                                        Paused
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                          </div>
-                        ))}
+                            ))}
 
-                        {getFilteredUsersForSelection().length === 0 &&
-                          !loadingAllUsers && (
+                          {getFilteredUsersForSelection().filter(
+                            (u) => !selectedUserIds.includes(u.id.toString()),
+                          ).length === 0 && (
                             <div className="p-4 text-center text-sm text-muted-foreground">
                               {specificMemberSearch
                                 ? "No members found matching your search."
-                                : "No members available."}
+                                : selectedUserIds.length > 0
+                                  ? "All matching members are already selected."
+                                  : "No members available."}
                             </div>
                           )}
-                      </div>
-
-                      {specificMemberTotalPages > 1 && (
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs text-muted-foreground">
-                            Page {specificMemberPage} of{" "}
-                            {specificMemberTotalPages}
-                          </p>
-                          <div className="flex gap-1">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                handleSpecificMemberPageChange(
-                                  specificMemberPage - 1,
-                                )
-                              }
-                              disabled={
-                                specificMemberPage <= 1 || loadingAllUsers
-                              }
-                            >
-                              <ChevronLeft className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                handleSpecificMemberPageChange(
-                                  specificMemberPage + 1,
-                                )
-                              }
-                              disabled={
-                                specificMemberPage >=
-                                  specificMemberTotalPages || loadingAllUsers
-                              }
-                            >
-                              <ChevronRight className="h-4 w-4" />
-                            </Button>
-                          </div>
                         </div>
                       )}
                     </div>
@@ -1316,11 +1285,13 @@ export default function EmailCenter() {
                           ✓ Count from database
                         </p>
                       )}
-                    {selectedRecipients === "specific" && selectedUserIds.length > 0 && (
-  <p className="text-xs text-muted-foreground mt-1">
-    ✓ User selected
-  </p>
-)}
+                    {selectedRecipients === "specific" &&
+                      selectedUserIds.length > 0 && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          ✓ {selectedUserIds.length} member
+                          {selectedUserIds.length !== 1 ? "s" : ""} selected
+                        </p>
+                      )}
                   </div>
 
                   <Button
@@ -1649,10 +1620,8 @@ export default function EmailCenter() {
           </Card>
         </TabsContent>
 
-        {/* ✨ NEW: Jobs Tab */}
         <TabsContent value="jobs">
           <div className="space-y-6">
-            {/* Current Processing Jobs */}
             {jobHistory.filter((j) => j.status === "processing").length > 0 && (
               <Card className="border-blue-200 bg-blue-50">
                 <CardHeader>
@@ -1742,7 +1711,6 @@ export default function EmailCenter() {
               </Card>
             )}
 
-            {/* Completed Jobs */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
@@ -1887,7 +1855,6 @@ export default function EmailCenter() {
         </TabsContent>
       </Tabs>
 
-      {/* ✨ NEW: Job Details Modal */}
       <Dialog open={jobDetailsOpen} onOpenChange={setJobDetailsOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
@@ -1896,7 +1863,6 @@ export default function EmailCenter() {
 
           {selectedJob && (
             <div className="space-y-6">
-              {/* Header */}
               <div className="border-b pb-4">
                 <div className="flex items-center justify-between mb-2">
                   <div>
@@ -1913,7 +1879,6 @@ export default function EmailCenter() {
                 </div>
               </div>
 
-              {/* Timeline */}
               <div>
                 <p className="text-sm font-medium mb-2">Timeline</p>
                 <div className="space-y-2 text-sm">
@@ -1930,7 +1895,6 @@ export default function EmailCenter() {
                 </div>
               </div>
 
-              {/* Progress */}
               <div>
                 <p className="text-sm font-medium mb-3">Progress</p>
                 <Progress
@@ -1972,7 +1936,6 @@ export default function EmailCenter() {
                 </div>
               </div>
 
-              {/* Failed Emails */}
               {selectedJob.failed_users.length > 0 && (
                 <div>
                   <p className="text-sm font-medium mb-2">Failed Emails</p>
@@ -2014,7 +1977,6 @@ export default function EmailCenter() {
                 </div>
               )}
 
-              {/* Actions */}
               {selectedJob.status === "completed" && selectedJob.failed > 0 && (
                 <Button
                   onClick={async () => {

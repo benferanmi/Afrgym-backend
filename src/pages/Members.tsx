@@ -764,7 +764,7 @@ export default function Members() {
                         )}
 
                         {/* Pause/Unpause Actions */}
-                        {canPauseMembership(user) && (
+                        {/* {canPauseMembership(user) && (
                           <DropdownMenuItem
                             onClick={() => handlePauseMembership(user)}
                             className="text-orange-600"
@@ -772,9 +772,9 @@ export default function Members() {
                             <Pause className="mr-2 h-4 w-4" />
                             Pause Membership
                           </DropdownMenuItem>
-                        )}
+                        )} */}
 
-                        {canUnpauseMembership(user) && (
+                        {/* {canUnpauseMembership(user) && (
                           <DropdownMenuItem
                             onClick={() => handleUnpauseMembership(user)}
                             className="text-green-600"
@@ -792,7 +792,7 @@ export default function Members() {
                             <Clock className="mr-2 h-4 w-4" />
                             View Pause Details
                           </DropdownMenuItem>
-                        )}
+                        )} */}
 
                         {/* Visit statistics for visit-based users */}
                         {isVisitBased(user) && (
@@ -864,7 +864,7 @@ export default function Members() {
       </Card>
 
       {/* Pause Membership Dialog */}
-      <Dialog open={pauseDialogOpen} onOpenChange={setPauseDialogOpen}>
+      {/* <Dialog open={pauseDialogOpen} onOpenChange={setPauseDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Pause Membership</DialogTitle>
@@ -942,10 +942,10 @@ export default function Members() {
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog> */}
 
       {/* Unpause Membership Dialog */}
-      <Dialog open={unpauseDialogOpen} onOpenChange={setUnpauseDialogOpen}>
+      {/* <Dialog open={unpauseDialogOpen} onOpenChange={setUnpauseDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Resume Membership</DialogTitle>
@@ -1008,7 +1008,7 @@ export default function Members() {
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog> */}
 
       {/* View Member Dialog */}
       <ViewMemberDialog
