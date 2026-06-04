@@ -78,11 +78,11 @@ const App = () => (
               <Settings />
             </ProtectedRoute>
           } /> */}
-          {/* <Route path="/revenue" element={
+          <Route path="/revenue" element={
             <ProtectedRoute>
               <Revenue />
             </ProtectedRoute>
-          } /> */}
+          } />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

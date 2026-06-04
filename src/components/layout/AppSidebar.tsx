@@ -43,17 +43,19 @@ export function AppSidebar() {
   const currentPath = location.pathname;
   const collapsed = state === "collapsed";
   const user = useAuthStore((state) => state.user);
-
-  // if (
-  //   user?.role === "super_admin" &&
-  //   !navigationItems.some((i) => i.url === "/revenue")
-  // ) {
-  //   navigationItems.push({
-  //     title: "Revenue",
-  //     url: "/revenue",
-  //     icon: CreditCard,
-  //   });
-  // }
+  if (user?.role === "super_admin") {
+    if (
+      (user?.email === "emmexafrgym@gmail.com" ||
+        user?.email === "emmex7401@gmail.com") &&
+      !navigationItems.some((i) => i.url === "/revenue")
+    ) {
+      navigationItems.push({
+        title: "Revenue",
+        url: "/revenue",
+        icon: CreditCard,
+      });
+    }
+  }
 
   const isActive = (path: string) => {
     if (path === "/") return currentPath === "/";
