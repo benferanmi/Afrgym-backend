@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   Users,
@@ -44,7 +44,10 @@ export function AppSidebar() {
   const collapsed = state === "collapsed";
   const user = useAuthStore((state) => state.user);
 
-  if (user?.role === "super_admin") {
+  if (
+    user?.role === "super_admin" &&
+    !navigationItems.some((i) => i.url === "/revenue")
+  ) {
     navigationItems.push({
       title: "Revenue",
       url: "/revenue",
