@@ -25,6 +25,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/stores/authStore";
 
 const navigationItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -41,6 +42,15 @@ export function AppSidebar() {
   const location = useLocation();
   const currentPath = location.pathname;
   const collapsed = state === "collapsed";
+  const user = useAuthStore((state) => state.user);
+
+  if (user?.role === "super_admin") {
+    navigationItems.push({
+      title: "Revenue",
+      url: "/revenue",
+      icon: CreditCard,
+    });
+  }
 
   const isActive = (path: string) => {
     if (path === "/") return currentPath === "/";
@@ -81,7 +91,7 @@ export function AppSidebar() {
           <SidebarGroupLabel
             className={cn(
               "text-xs font-semibold text-sidebar-foreground/70 mb-2",
-              collapsed && "sr-only"
+              collapsed && "sr-only",
             )}
           >
             Navigation
@@ -96,7 +106,7 @@ export function AppSidebar() {
                     className={cn(
                       "w-full justify-start gap-3 rounded-lg px-3 py-2 transition-all hover:bg-sidebar-accent group",
                       isActive(item.url) &&
-                        "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90"
+                        "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90",
                     )}
                   >
                     <NavLink to={item.url}>
@@ -105,7 +115,7 @@ export function AppSidebar() {
                           "h-5 w-5 transition-colors",
                           isActive(item.url)
                             ? "text-sidebar-primary-foreground"
-                            : "text-sidebar-foreground/70"
+                            : "text-sidebar-foreground/70",
                         )}
                       />
                       {!collapsed && (
@@ -114,7 +124,7 @@ export function AppSidebar() {
                             "font-medium transition-colors",
                             isActive(item.url)
                               ? "text-sidebar-primary-foreground"
-                              : "text-sidebar-foreground"
+                              : "text-sidebar-foreground",
                           )}
                         >
                           {item.title}
