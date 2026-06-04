@@ -65,7 +65,7 @@ const getMonthOptions = () => {
   for (let i = 0; i < 24; i++) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     months.push({
-      value: d.toISOString().slice(0, 7),
+      value: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
       label: d.toLocaleDateString("en-US", { year: "numeric", month: "long" }),
     });
   }
@@ -157,7 +157,7 @@ export default function Revenue() {
               id="daily-date"
               type="date"
               value={selectedDate}
-              max={new Date().toISOString().slice(0, 10)}
+              max={(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })()}
               onChange={(e) => setSelectedDate(e.target.value)}
             />
           </div>
@@ -176,7 +176,7 @@ export default function Revenue() {
               id="weekly-date"
               type="date"
               value={selectedWeekDate}
-              max={new Date().toISOString().slice(0, 10)}
+              max={(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })()}
               onChange={(e) => setSelectedWeekDate(e.target.value)}
             />
             {selectedWeekDate && (
@@ -225,7 +225,7 @@ export default function Revenue() {
                 id="start-date"
                 type="date"
                 value={selectedStartDate}
-                max={selectedEndDate || new Date().toISOString().slice(0, 10)}
+               max={selectedEndDate || (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })()}
                 onChange={(e) => setDateRange(e.target.value, selectedEndDate)}
               />
             </div>
@@ -241,7 +241,7 @@ export default function Revenue() {
                 type="date"
                 value={selectedEndDate}
                 min={selectedStartDate}
-                max={new Date().toISOString().slice(0, 10)}
+                max={(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })()}
                 onChange={(e) =>
                   setDateRange(selectedStartDate, e.target.value)
                 }

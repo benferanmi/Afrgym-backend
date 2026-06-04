@@ -200,9 +200,25 @@ interface RevenueState {
 // Store
 // ─────────────────────────────────────────────────────────────────────────────
 
-const today = new Date().toISOString().slice(0, 10);
-const currentMonth = new Date().toISOString().slice(0, 7);
-const firstOfMonth = new Date(new Date().setDate(1)).toISOString().slice(0, 10);
+/** Format a Date as YYYY-MM-DD in LOCAL time (not UTC) */
+const toLocalDateString = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
+/** Format a Date as YYYY-MM in LOCAL time */
+const toLocalMonthString = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
+};
+
+const _now = new Date();
+const today = toLocalDateString(_now);
+const currentMonth = toLocalMonthString(_now);
+const firstOfMonth = toLocalDateString(new Date(_now.getFullYear(), _now.getMonth(), 1));
 
 export const useRevenueStore = create<RevenueState>((set, get) => ({
   // ── Initial state ──────────────────────────────────────────────────────────
