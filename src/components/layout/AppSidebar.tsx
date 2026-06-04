@@ -44,16 +44,16 @@ export function AppSidebar() {
   const collapsed = state === "collapsed";
   const user = useAuthStore((state) => state.user);
 
-  if (
-    user?.role === "super_admin" &&
-    !navigationItems.some((i) => i.url === "/revenue")
-  ) {
-    navigationItems.push({
-      title: "Revenue",
-      url: "/revenue",
-      icon: CreditCard,
-    });
-  }
+  // if (
+  //   user?.role === "super_admin" &&
+  //   !navigationItems.some((i) => i.url === "/revenue")
+  // ) {
+  //   navigationItems.push({
+  //     title: "Revenue",
+  //     url: "/revenue",
+  //     icon: CreditCard,
+  //   });
+  // }
 
   const isActive = (path: string) => {
     if (path === "/") return currentPath === "/";
