@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,10 +26,15 @@ import {
   X,
   User,
   TrendingUp,
+  CheckCircle2,
+  Fingerprint,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { CreateUserPayload, useUsersStore } from "@/stores/usersStore";
+import { CreateUserPayload, useUsersStore, GymUser } from "@/stores/usersStore";
 import { uploadToCloudinary } from "@/config/cloudinary";
+import { Switch } from "@/components/ui/switch";
+import { toast } from "sonner";
+import { useCheckinCacheStore } from "@/stores/checkinCacheStore";
 
 interface AddMemberDialogProps {
   open: boolean;
@@ -144,6 +149,16 @@ export function AddMemberDialog({
   onSuccess,
 }: AddMemberDialogProps) {
   const { addUser, loading, error, clearError } = useUsersStore();
+  const { enrollFingerprint, getDeviceStatus } = useCheckinCacheStore();
+  const [createdUser, setCreatedUser] = useState<GymUser | null>(null);
+
+  const [deviceSerial, setDeviceSerial] = useState("");
+  const [zkPin, setZkPin] = useState("");
+  const [isLoadingStatus, setIsLoadingStatus] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [isEnrolling, setIsEnrolling] = useState(false);
+  const [enrollError, setEnrollError] = useState("");
+  const [isManualSerial, setIsManualSerial] = useState(false);
 
   const getCurrentDate = () => {
     const today = new Date();
@@ -199,6 +214,7 @@ export function AddMemberDialog({
     setSelectedFile(null);
     setImagePreview("");
     setImageUploadError("");
+    setCreatedUser(null);
     clearError();
   };
 
@@ -319,16 +335,72 @@ export function AddMemberDialog({
     setIsSubmitting(true);
 
     try {
-      await addUser(formData);
-
-      // Close dialog, reset form, and notify success
-      onOpenChange(false);
-      resetForm();
+      const newUser = await addUser(formData);
+      setCreatedUser(newUser);
+      toast.success("Member created successfully!");
       onSuccess?.();
     } catch (error) {
       console.error("Failed to add user:", error);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Fetch device status when dialog is opened
+  useEffect(() => {
+    if (open) {
+      setEnrollError("");
+      setIsManualSerial(false);
+
+      const fetchDeviceStatus = async () => {
+        setIsLoadingStatus(true);
+        try {
+          const status = await getDeviceStatus();
+          if (status?.success) {
+            setDeviceSerial(status.device_serial || "");
+            setIsConnected(status.is_connected || false);
+          }
+        } catch (e) {
+          console.warn("Failed to fetch fingerprint device status:", e);
+        } finally {
+          setIsLoadingStatus(false);
+        }
+      };
+
+      fetchDeviceStatus();
+    }
+  }, [open, getDeviceStatus]);
+
+  // Set the default ZK PIN when a member is successfully created
+  useEffect(() => {
+    if (createdUser) {
+      setZkPin(createdUser.id.toString());
+    }
+  }, [createdUser]);
+
+  const handleEnroll = async () => {
+    if (!createdUser) return;
+    if (!zkPin.trim()) {
+      setEnrollError("ZK PIN is required");
+      return;
+    }
+    if (!deviceSerial.trim()) {
+      setEnrollError("Device Serial is required. Connect a device or enter serial manually.");
+      return;
+    }
+
+    setIsEnrolling(true);
+    setEnrollError("");
+    try {
+      await enrollFingerprint(createdUser.id, zkPin, deviceSerial);
+      toast.success("Fingerprint registered on database successfully.");
+    } catch (err: any) {
+      console.error(err);
+      const errMsg = err?.message || "Failed to save enrollment to database.";
+      setEnrollError(errMsg);
+      toast.error(errMsg);
+    } finally {
+      setIsEnrolling(false);
     }
   };
 
@@ -387,379 +459,506 @@ export function AddMemberDialog({
           </Alert>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Profile Picture Upload */}
-          <div className="space-y-4 border-b pb-4">
-            <h4 className="font-medium">Profile Picture (Optional)</h4>
+        {createdUser ? (
+          <div className="space-y-6">
+            <div className="flex flex-col items-center justify-center text-center p-4 bg-green-50/50 rounded-lg border border-green-100">
+              <CheckCircle2 className="h-10 w-10 text-green-500 mb-2" />
+              <h4 className="font-semibold text-green-900">Member Created Successfully</h4>
+              <p className="text-sm text-green-700 mt-1">
+                {createdUser.display_name} has been added as a member.
+              </p>
+            </div>
 
-            <div className="flex flex-col items-center space-y-4">
-              {/* Image Preview */}
-              <div className="relative">
-                {imagePreview || formData.profile_picture_url ? (
-                  <div className="relative">
-                    <img
-                      src={imagePreview || formData.profile_picture_url}
-                      alt="Profile preview"
-                      className="w-24 h-24 rounded-full object-cover border-2 border-gray-200"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleRemoveImage}
-                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
+            {/* Fingerprint Biometric Section */}
+            <div className="space-y-4 border rounded-lg p-4 bg-muted/10">
+              <h4 className="font-medium flex items-center gap-2">
+                <Fingerprint className="h-4 w-4" />
+                Enroll Fingerprint
+              </h4>
+
+              <div className="flex items-center gap-2 text-sm">
+                <span className="font-medium">Scanner Device:</span>
+                {isLoadingStatus ? (
+                  <span className="flex items-center gap-1 text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Checking device...
+                  </span>
+                ) : isConnected ? (
+                  <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+                    Connected ({deviceSerial})
+                  </Badge>
                 ) : (
-                  <div className="w-24 h-24 rounded-full bg-gray-100 border-2 border-gray-200 flex items-center justify-center">
-                    <User className="h-8 w-8 text-gray-400" />
-                  </div>
+                  <Badge variant="secondary">
+                    Disconnected {deviceSerial ? `(${deviceSerial})` : ""}
+                  </Badge>
                 )}
               </div>
 
-              {/* File Input */}
-              <div className="flex flex-col items-center space-y-2">
-                <Label htmlFor="profile_picture" className="cursor-pointer">
-                  <div className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
-                    <Upload className="h-4 w-4" />
-                    <span>Choose Image</span>
-                  </div>
-                </Label>
-                <Input
-                  id="profile_picture"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageSelect}
-                  className="hidden"
-                />
-                <p className="text-xs text-muted-foreground text-center">
-                  Max file size: 5MB. Supported: JPG, PNG, GIF
+              <div className="text-xs text-yellow-600 bg-yellow-50/50 border border-yellow-100 p-3 rounded-md space-y-1">
+                <p className="font-medium">Instructions for Enrollment:</p>
+                <p>
+                  Register this member's fingerprint on the scanner first. When prompted for a User ID on the device, enter <strong className="font-semibold text-amber-900 bg-amber-100/60 px-1 rounded">{createdUser.id}</strong> exactly.
                 </p>
               </div>
 
-              {/* Upload Button */}
-              {selectedFile && !formData.profile_picture_url && (
-                <Button
-                  type="button"
-                  onClick={handleImageUpload}
-                  disabled={isUploadingImage}
-                  size="sm"
-                  className="w-full max-w-[200px]"
-                >
-                  {isUploadingImage ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Uploading...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="mr-2 h-4 w-4" />
-                      Upload Image
-                    </>
-                  )}
-                </Button>
-              )}
-
-              {/* Upload Status */}
-              {formData.profile_picture_url && (
-                <p className="text-sm text-green-600 flex items-center">
-                  <span className="mr-1">✓</span>
-                  Image uploaded successfully
-                </p>
-              )}
-
-              {/* Upload Error */}
-              {imageUploadError && (
-                <p className="text-sm text-destructive text-center">
-                  {imageUploadError}
-                </p>
-              )}
-
-              {/* Form Error for Image */}
-              {formErrors.image && (
-                <p className="text-sm text-destructive text-center">
-                  {formErrors.image}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Basic Information */}
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email *</Label>
-              <Input
-                id="email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => handleChange("email", e.target.value)}
-                placeholder="Enter email address"
-              />
-              {formErrors.email && (
-                <p className="text-sm text-destructive">{formErrors.email}</p>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="username">Username *</Label>
-                <Input
-                  id="username"
-                  value={formData.username}
-                  onChange={(e) => handleChange("username", e.target.value)}
-                  placeholder="Enter username"
-                />
-                {formErrors.username && (
-                  <p className="text-sm text-destructive">
-                    {formErrors.username}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone Number *</Label>
-                <Input
-                  id="phone"
-                  value={formData.phone}
-                  onChange={(e) => handleChange("phone", e.target.value)}
-                  placeholder="8100110011"
-                />
-                {formErrors.phone && (
-                  <p className="text-sm text-destructive">{formErrors.phone}</p>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="first_name">First Name *</Label>
-                <Input
-                  id="first_name"
-                  value={formData.first_name}
-                  onChange={(e) => handleChange("first_name", e.target.value)}
-                  placeholder="Enter first name"
-                />
-                {formErrors.first_name && (
-                  <p className="text-sm text-destructive">
-                    {formErrors.first_name}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="last_name">Last Name *</Label>
-                <Input
-                  id="last_name"
-                  value={formData.last_name}
-                  onChange={(e) => handleChange("last_name", e.target.value)}
-                  placeholder="Enter last name"
-                />
-                {formErrors.last_name && (
-                  <p className="text-sm text-destructive">
-                    {formErrors.last_name}
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Membership Information */}
-          <div className="space-y-4 border-t pt-4">
-            <h4 className="font-medium">Membership Information (Optional)</h4>
-
-            <div className="space-y-2">
-              <Label htmlFor="membership_level">Membership Plan</Label>
-              <Select
-                value={formData.level_id?.toString() || "none"}
-                onValueChange={handleMembershipChange}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select membership plan (optional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No Membership</SelectItem>
-
-                  {/* Plans with Trainer */}
-                  <div className="px-2 py-1 text-sm font-medium text-muted-foreground bg-muted/50">
-                    Plans with Trainer
-                  </div>
-                  {membershipPlans.withTrainer.map((plan) => (
-                    <SelectItem key={plan.id} value={plan.id}>
-                      <div className="flex flex-col">
-                        <div className="flex items-center gap-2">
-                          <span>{plan.name}</span>
-                          {plan.isVisitBased && (
-                            <Badge
-                              variant="outline"
-                              className="text-xs bg-blue-100 text-blue-800"
-                            >
-                              Visit-Based
-                            </Badge>
-                          )}
-                        </div>
-                        <span className="text-xs text-muted-foreground">
-                          {plan.isVisitBased
-                            ? `${plan.monthlyVisits} visits/month`
-                            : `${plan.defaultDays} days`}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
-
-                  {/* Plans without Trainer */}
-                  <div className="px-2 py-1 text-sm font-medium text-muted-foreground bg-muted/50">
-                    Plans without Trainer
-                  </div>
-                  {membershipPlans.withoutTrainer.map((plan) => (
-                    <SelectItem key={plan.id} value={plan.id}>
-                      <div className="flex flex-col">
-                        <div className="flex items-center gap-2">
-                          <span>{plan.name}</span>
-                          {plan.isVisitBased && (
-                            <Badge
-                              variant="outline"
-                              className="text-xs bg-blue-100 text-blue-800"
-                            >
-                              Visit-Based
-                            </Badge>
-                          )}
-                        </div>
-                        <span className="text-xs text-muted-foreground">
-                          {plan.isVisitBased
-                            ? `${plan.monthlyVisits} visits/month`
-                            : `${plan.defaultDays} days`}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {formData.level_id && (
-              <>
-                {selectedPlan && (
-                  <div
-                    className={`p-3 border rounded-md ${
-                      selectedPlan.isVisitBased
-                        ? "bg-blue-50 border-blue-200"
-                        : "bg-blue-50 border-blue-200"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <p className="text-sm font-medium">
-                        Selected Plan: {selectedPlan.name}
-                      </p>
-                      {selectedPlan.isVisitBased && (
-                        <Badge className="bg-blue-100 text-blue-800">
-                          Visit-Based
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {selectedPlan.isVisitBased
-                        ? `Visit-based plan with ${selectedPlan.monthlyVisits} visits per billing cycle. Visits will reset monthly based on the start date.`
-                        : `Time-based plan with ${selectedPlan.defaultDays} days duration. You can modify the end date below if needed.`}
-                    </p>
-                  </div>
-                )}
-
+              <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="start_date">Start Date</Label>
+                    <Label htmlFor="addZkPin" className="text-xs">Device User ID / PIN</Label>
                     <Input
-                      id="start_date"
-                      type="date"
-                      value={formData.start_date}
-                      disabled
-                      className="bg-muted text-muted-foreground cursor-not-allowed"
+                      id="addZkPin"
+                      value={zkPin}
+                      onChange={(e) => setZkPin(e.target.value)}
+                      placeholder="e.g. 101"
+                      className="h-9 font-mono text-xs"
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Membership starts from today
-                    </p>
                   </div>
-
                   <div className="space-y-2">
-                    <Label htmlFor="end_date">End Date *</Label>
-                    <Input
-                      id="end_date"
-                      type="date"
-                      value={formData.end_date}
-                      onChange={(e) => handleChange("end_date", e.target.value)}
-                      min={formData.start_date}
-                    />
-                    {formErrors.end_date && (
-                      <p className="text-sm text-destructive">
-                        {formErrors.end_date}
-                      </p>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="addDeviceSerial" className="text-xs">Device Serial Number</Label>
+                      {!isConnected && (
+                        <div className="flex items-center gap-1.5">
+                          <Switch
+                            id="add-manual-serial-toggle"
+                            checked={isManualSerial}
+                            onCheckedChange={setIsManualSerial}
+                          />
+                          <Label htmlFor="add-manual-serial-toggle" className="text-[10px] text-muted-foreground cursor-pointer">
+                            Enter Manually
+                          </Label>
+                        </div>
+                      )}
+                    </div>
+
+                    {isConnected ? (
+                      <div className="h-9 px-3 py-1 bg-green-50 text-green-800 border border-green-200 rounded-md flex items-center justify-between text-xs font-mono">
+                        <span>Device Serial: {deviceSerial || "Unknown"}</span>
+                        <span className="text-[10px] text-green-600 font-sans">✓ auto-detected</span>
+                      </div>
+                    ) : isManualSerial ? (
+                      <Input
+                        id="addDeviceSerial"
+                        value={deviceSerial}
+                        onChange={(e) => setDeviceSerial(e.target.value)}
+                        placeholder="e.g. SN1234567890"
+                        className="h-9 font-mono text-xs"
+                      />
+                    ) : (
+                      <Input
+                        id="addDeviceSerial"
+                        value={deviceSerial}
+                        disabled
+                        placeholder="No device connected (offline)"
+                        className="h-9 font-mono text-xs bg-muted cursor-not-allowed"
+                      />
                     )}
-                    <p className="text-xs text-muted-foreground">
-                      {selectedPlan?.isVisitBased
-                        ? "For visit-based plans, this sets the billing cycle duration."
-                        : "Auto-calculated based on plan. You can modify if needed."}
-                    </p>
                   </div>
                 </div>
 
-                {/* Additional Info for Visit-Based Plans */}
-                {selectedPlan?.isVisitBased && (
-                  <div className="bg-amber-50 p-3 rounded-md border border-amber-200">
-                    <div className="flex items-center gap-2 mb-2">
-                      <TrendingUp className="h-4 w-4 text-amber-600" />
-                      <p className="text-sm font-medium text-amber-800">
-                        Visit-Based Plan Information
-                      </p>
-                    </div>
-                    <div className="text-xs text-amber-700 space-y-1">
-                      <p>
-                        • This plan includes {selectedPlan.monthlyVisits} visits
-                        per billing cycle
-                      </p>
-                      <p>
-                        • Visits will reset automatically based on the start
-                        date
-                      </p>
-                      <p>• Unused visits do not carry over to the next cycle</p>
-                      <p>• Members can only check in once per day</p>
-                      <p>
-                        • Visit tracking begins immediately upon member creation
-                      </p>
-                    </div>
+                {enrollError && (
+                  <div className="text-xs text-red-600 font-medium">
+                    Error: {enrollError}
                   </div>
                 )}
 
-                <div className="text-sm text-muted-foreground">
-                  A QR code will be automatically generated for this member when
-                  a membership is assigned.
-                </div>
-              </>
-            )}
-          </div>
+                <Button
+                  type="button"
+                  onClick={handleEnroll}
+                  disabled={isEnrolling}
+                  className="w-full h-9 gradient-gym text-white flex items-center justify-center gap-1.5"
+                >
+                  {isEnrolling ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : null}
+                  Save Enrollment to Database
+                </Button>
+              </div>
+            </div>
 
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => handleDialogChange(false)}
-              disabled={isSubmitting || isUploadingImage}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={isSubmitting || isUploadingImage || !canSubmit}
-              className="gradient-gym text-white"
-            >
-              {isSubmitting ? (
+            <DialogFooter>
+              <Button
+                type="button"
+                onClick={() => handleDialogChange(false)}
+                className="w-full sm:w-auto"
+              >
+                Finish
+              </Button>
+            </DialogFooter>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Profile Picture Upload */}
+            <div className="space-y-4 border-b pb-4">
+              <h4 className="font-medium">Profile Picture (Optional)</h4>
+
+              <div className="flex flex-col items-center space-y-4">
+                {/* Image Preview */}
+                <div className="relative">
+                  {imagePreview || formData.profile_picture_url ? (
+                    <div className="relative">
+                      <img
+                        src={imagePreview || formData.profile_picture_url}
+                        alt="Profile preview"
+                        className="w-24 h-24 rounded-full object-cover border-2 border-gray-200"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleRemoveImage}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-24 h-24 rounded-full bg-gray-100 border-2 border-gray-200 flex items-center justify-center">
+                      <User className="h-8 w-8 text-gray-400" />
+                    </div>
+                  )}
+                </div>
+
+                {/* File Input */}
+                <div className="flex flex-col items-center space-y-2">
+                  <Label htmlFor="profile_picture" className="cursor-pointer">
+                    <div className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
+                      <Upload className="h-4 w-4" />
+                      <span>Choose Image</span>
+                    </div>
+                  </Label>
+                  <Input
+                    id="profile_picture"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageSelect}
+                    className="hidden"
+                  />
+                  <p className="text-xs text-muted-foreground text-center">
+                    Max file size: 5MB. Supported: JPG, PNG, GIF
+                  </p>
+                </div>
+
+                {/* Upload Button */}
+                {selectedFile && !formData.profile_picture_url && (
+                  <Button
+                    type="button"
+                    onClick={handleImageUpload}
+                    disabled={isUploadingImage}
+                    size="sm"
+                    className="w-full max-w-[200px]"
+                  >
+                    {isUploadingImage ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Uploading...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="mr-2 h-4 w-4" />
+                        Upload Image
+                      </>
+                    )}
+                  </Button>
+                )}
+
+                {/* Upload Status */}
+                {formData.profile_picture_url && (
+                  <p className="text-sm text-green-600 flex items-center">
+                    <span className="mr-1">✓</span>
+                    Image uploaded successfully
+                  </p>
+                )}
+
+                {/* Upload Error */}
+                {imageUploadError && (
+                  <p className="text-sm text-destructive text-center">
+                    {imageUploadError}
+                  </p>
+                )}
+
+                {/* Form Error for Image */}
+                {formErrors.image && (
+                  <p className="text-sm text-destructive text-center">
+                    {formErrors.image}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Basic Information */}
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email *</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => handleChange("email", e.target.value)}
+                  placeholder="Enter email address"
+                />
+                {formErrors.email && (
+                  <p className="text-sm text-destructive">{formErrors.email}</p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="username">Username *</Label>
+                  <Input
+                    id="username"
+                    value={formData.username}
+                    onChange={(e) => handleChange("username", e.target.value)}
+                    placeholder="Enter username"
+                  />
+                  {formErrors.username && (
+                    <p className="text-sm text-destructive">
+                      {formErrors.username}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number *</Label>
+                  <Input
+                    id="phone"
+                    value={formData.phone}
+                    onChange={(e) => handleChange("phone", e.target.value)}
+                    placeholder="8100110011"
+                  />
+                  {formErrors.phone && (
+                    <p className="text-sm text-destructive">{formErrors.phone}</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="first_name">First Name *</Label>
+                  <Input
+                    id="first_name"
+                    value={formData.first_name}
+                    onChange={(e) => handleChange("first_name", e.target.value)}
+                    placeholder="Enter first name"
+                  />
+                  {formErrors.first_name && (
+                    <p className="text-sm text-destructive">
+                      {formErrors.first_name}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="last_name">Last Name *</Label>
+                  <Input
+                    id="last_name"
+                    value={formData.last_name}
+                    onChange={(e) => handleChange("last_name", e.target.value)}
+                    placeholder="Enter last name"
+                  />
+                  {formErrors.last_name && (
+                    <p className="text-sm text-destructive">
+                      {formErrors.last_name}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Membership Information */}
+            <div className="space-y-4 border-t pt-4">
+              <h4 className="font-medium">Membership Information (Optional)</h4>
+
+              <div className="space-y-2">
+                <Label htmlFor="membership_level">Membership Plan</Label>
+                <Select
+                  value={formData.level_id?.toString() || "none"}
+                  onValueChange={handleMembershipChange}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select membership plan (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Membership</SelectItem>
+
+                    {/* Plans with Trainer */}
+                    <div className="px-2 py-1 text-sm font-medium text-muted-foreground bg-muted/50">
+                      Plans with Trainer
+                    </div>
+                    {membershipPlans.withTrainer.map((plan) => (
+                      <SelectItem key={plan.id} value={plan.id}>
+                        <div className="flex flex-col">
+                          <div className="flex items-center gap-2">
+                            <span>{plan.name}</span>
+                            {plan.isVisitBased && (
+                              <Badge
+                                variant="outline"
+                                className="text-xs bg-blue-100 text-blue-800"
+                              >
+                                Visit-Based
+                              </Badge>
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {plan.isVisitBased
+                              ? `${plan.monthlyVisits} visits/month`
+                              : `${plan.defaultDays} days`}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+
+                    {/* Plans without Trainer */}
+                    <div className="px-2 py-1 text-sm font-medium text-muted-foreground bg-muted/50">
+                      Plans without Trainer
+                    </div>
+                    {membershipPlans.withoutTrainer.map((plan) => (
+                      <SelectItem key={plan.id} value={plan.id}>
+                        <div className="flex flex-col">
+                          <div className="flex items-center gap-2">
+                            <span>{plan.name}</span>
+                            {plan.isVisitBased && (
+                              <Badge
+                                variant="outline"
+                                className="text-xs bg-blue-100 text-blue-800"
+                              >
+                                Visit-Based
+                              </Badge>
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {plan.isVisitBased
+                              ? `${plan.monthlyVisits} visits/month`
+                              : `${plan.defaultDays} days`}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {formData.level_id && (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Adding Member...
+                  {selectedPlan && (
+                    <div
+                      className={`p-3 border rounded-md ${selectedPlan.isVisitBased
+                          ? "bg-blue-50 border-blue-200"
+                          : "bg-blue-50 border-blue-200"
+                        }`}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <p className="text-sm font-medium">
+                          Selected Plan: {selectedPlan.name}
+                        </p>
+                        {selectedPlan.isVisitBased && (
+                          <Badge className="bg-blue-100 text-blue-800">
+                            Visit-Based
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedPlan.isVisitBased
+                          ? `Visit-based plan with ${selectedPlan.monthlyVisits} visits per billing cycle. Visits will reset monthly based on the start date.`
+                          : `Time-based plan with ${selectedPlan.defaultDays} days duration. You can modify the end date below if needed.`}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="start_date">Start Date</Label>
+                      <Input
+                        id="start_date"
+                        type="date"
+                        value={formData.start_date}
+                        disabled
+                        className="bg-muted text-muted-foreground cursor-not-allowed"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Membership starts from today
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="end_date">End Date *</Label>
+                      <Input
+                        id="end_date"
+                        type="date"
+                        value={formData.end_date}
+                        onChange={(e) => handleChange("end_date", e.target.value)}
+                        min={formData.start_date}
+                      />
+                      {formErrors.end_date && (
+                        <p className="text-sm text-destructive">
+                          {formErrors.end_date}
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        {selectedPlan?.isVisitBased
+                          ? "For visit-based plans, this sets the billing cycle duration."
+                          : "Auto-calculated based on plan. You can modify if needed."}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Additional Info for Visit-Based Plans */}
+                  {selectedPlan?.isVisitBased && (
+                    <div className="bg-amber-50 p-3 rounded-md border border-amber-200">
+                      <div className="flex items-center gap-2 mb-2">
+                        <TrendingUp className="h-4 w-4 text-amber-600" />
+                        <p className="text-sm font-medium text-amber-800">
+                          Visit-Based Plan Information
+                        </p>
+                      </div>
+                      <div className="text-xs text-amber-700 space-y-1">
+                        <p>
+                          • This plan includes {selectedPlan.monthlyVisits} visits
+                          per billing cycle
+                        </p>
+                        <p>
+                          • Visits will reset automatically based on the start
+                          date
+                        </p>
+                        <p>• Unused visits do not carry over to the next cycle</p>
+                        <p>• Members can only check in once per day</p>
+                        <p>
+                          • Visit tracking begins immediately upon member creation
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="text-sm text-muted-foreground">
+                    A QR code will be automatically generated for this member when
+                    a membership is assigned.
+                  </div>
                 </>
-              ) : (
-                "Add Member"
               )}
-            </Button>
-          </DialogFooter>
-        </form>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => handleDialogChange(false)}
+                disabled={isSubmitting || isUploadingImage}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSubmitting || isUploadingImage || !canSubmit}
+                className="gradient-gym text-white"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Adding Member...
+                  </>
+                ) : (
+                  "Add Member"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   );

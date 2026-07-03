@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { useCheckinCacheStore } from "@/stores/checkinCacheStore";
 import {
@@ -72,6 +73,7 @@ export function ViewMemberDialog({
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [enrollError, setEnrollError] = useState("");
+  const [isManualSerial, setIsManualSerial] = useState(false);
 
   const enrollment = fingerprints.find((f) => f.user_id === user.id && f.is_active);
 
@@ -79,6 +81,7 @@ export function ViewMemberDialog({
     if (open && user) {
       setZkPin(user.id.toString());
       setEnrollError("");
+      setIsManualSerial(false);
       
       const fetchDeviceStatus = async () => {
         setIsLoadingStatus(true);
@@ -681,14 +684,44 @@ export function ViewMemberDialog({
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="deviceSerial" className="text-xs">Device Serial Number</Label>
-                      <Input
-                        id="deviceSerial"
-                        value={deviceSerial}
-                        onChange={(e) => setDeviceSerial(e.target.value)}
-                        placeholder="e.g. SN1234567890"
-                        className="h-9 font-mono"
-                      />
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="deviceSerial" className="text-xs">Device Serial Number</Label>
+                        {!isConnected && (
+                          <div className="flex items-center gap-1.5">
+                            <Switch
+                              id="manual-serial-toggle"
+                              checked={isManualSerial}
+                              onCheckedChange={setIsManualSerial}
+                            />
+                            <Label htmlFor="manual-serial-toggle" className="text-[10px] text-muted-foreground cursor-pointer">
+                              Enter Manually
+                            </Label>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {isConnected ? (
+                        <div className="h-9 px-3 py-1 bg-green-50 text-green-800 border border-green-200 rounded-md flex items-center justify-between text-xs font-mono">
+                          <span>Device Serial: {deviceSerial || "Unknown"}</span>
+                          <span className="text-[10px] text-green-600 font-sans">✓ auto-detected</span>
+                        </div>
+                      ) : isManualSerial ? (
+                        <Input
+                          id="deviceSerial"
+                          value={deviceSerial}
+                          onChange={(e) => setDeviceSerial(e.target.value)}
+                          placeholder="e.g. SN1234567890"
+                          className="h-9 font-mono text-xs"
+                        />
+                      ) : (
+                        <Input
+                          id="deviceSerial"
+                          value={deviceSerial}
+                          disabled
+                          placeholder="No device connected (offline)"
+                          className="h-9 font-mono text-xs bg-muted cursor-not-allowed"
+                        />
+                      )}
                     </div>
                   </div>
 
