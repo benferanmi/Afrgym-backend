@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Dumbbell,
   ShoppingBagIcon,
+  Fingerprint,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
@@ -30,6 +31,7 @@ import { useAuthStore } from "@/stores/authStore";
 const navigationItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Members", url: "/members", icon: Users },
+  { title: "Scan Mode", url: "/scan-mode", icon: Fingerprint },
   { title: "QR Codes", url: "/qr-codes", icon: QrCode },
   { title: "Memberships", url: "/memberships", icon: CreditCard },
   { title: "Email Center", url: "/emails", icon: Mail },

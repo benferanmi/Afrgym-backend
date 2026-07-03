@@ -214,18 +214,17 @@ export default function Members() {
   };
 
   const handleEditSuccess = () => {
-    fetchUsers(currentPage, searchTerm);
+    // Cache is updated automatically inside updateUser mutator
   };
 
   const handleAddSuccess = () => {
-    fetchUsers(currentPage, searchTerm);
+    // Cache is updated automatically inside addUser mutator
   };
 
   const handleDeleteUser = async (userId: number) => {
     if (window.confirm("Are you sure you want to delete this member?")) {
       try {
         await deleteUser(userId);
-        fetchUsers(currentPage, searchTerm);
       } catch (error) {
         console.error("Failed to delete user:", error);
       }

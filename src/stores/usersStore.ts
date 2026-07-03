@@ -1,7 +1,55 @@
 import { create } from "zustand";
 import { useEffect } from "react";
+import { useCheckinCacheStore } from "./checkinCacheStore";
 
 const BASE_URL = "https://afrgym.com.ng/wp-json/gym-admin/v1";
+const STORAGE_KEY = "gym-one-checkin-cache";
+const GYM_TYPE = "gym-one";
+
+const loadInitialState = (): GymUser[] => {
+  if (typeof window === "undefined") return [];
+  const cached = localStorage.getItem(STORAGE_KEY);
+  if (cached) {
+    try {
+      const parsed = JSON.parse(cached);
+      return parsed.users || [];
+    } catch (e) {
+      console.warn("Failed to parse cached users:", e);
+    }
+  }
+  return [];
+};
+
+const getCacheTimestamp = (): number | null => {
+  if (typeof window === "undefined") return null;
+  const cached = localStorage.getItem(STORAGE_KEY);
+  if (cached) {
+    try {
+      const parsed = JSON.parse(cached);
+      return parsed.lastSyncedAt || null;
+    } catch (e) {}
+  }
+  return null;
+};
+
+const saveToCacheAndSync = (users: GymUser[]) => {
+  if (typeof window !== "undefined") {
+    const cached = localStorage.getItem(STORAGE_KEY);
+    let fingerprints = [];
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        fingerprints = parsed.fingerprints || [];
+      } catch (e) {}
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      users,
+      fingerprints,
+      lastSyncedAt: Date.now()
+    }));
+  }
+  useCheckinCacheStore.setState({ users });
+};
 
 // Recipient statistics for email sending
 export interface RecipientStats {
@@ -514,15 +562,19 @@ const apiCall = async (endpoint: string, options: RequestInit = {}) => {
   }
 };
 
+const initialUsers = loadInitialState();
+const initialTotal = initialUsers.length;
+const initialTotalPages = Math.max(1, Math.ceil(initialTotal / 20));
+
 export const useUsersStore = create<UsersState>((set, get) => ({
-  users: [],
+  users: initialUsers,
   loading: false,
   selectedUser: null,
   searchTerm: "",
   filterStatus: "all",
   currentPage: 1,
-  totalPages: 1,
-  total: 0,
+  totalPages: initialTotalPages,
+  total: initialTotal,
   error: null,
   qrCodeStatistics: null,
   qrCodeLoading: false,
@@ -533,45 +585,58 @@ export const useUsersStore = create<UsersState>((set, get) => ({
   exportLoading: false,
 
   fetchUsers: async (page = 1, search = "", perPage = 20) => {
-    set({ loading: true, error: null });
-
-    try {
-      const queryParams = new URLSearchParams();
-      queryParams.append("page", page.toString());
-      queryParams.append("per_page", perPage.toString());
-
-      if (search) {
-        queryParams.append("search", search);
+    // If the cache is completely empty, trigger a sync via checkinCacheStore
+    if (get().users.length === 0) {
+      set({ loading: true, error: null });
+      try {
+        await useCheckinCacheStore.getState().syncCache();
+        set({ loading: false, error: null });
+      } catch (err: any) {
+        set({ loading: false, error: err.message || "Failed to fetch users" });
+        return;
       }
-
-      const response: UsersResponse = await apiCall(
-        `/users/gym-one?${queryParams}`
-      );
-
-      set({
-        users: response.users,
-        total: response.total,
-        currentPage: response.page,
-        totalPages: response.total_pages,
-        loading: false,
-        error: null,
-      });
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to fetch users";
-      set({
-        loading: false,
-        error: errorMessage,
-        users: [],
-        total: 0,
-        totalPages: 1,
-      });
-
-      // Don't throw error if it's a token issue (user will be redirected)
-      if (!isTokenInvalidError(error)) {
-        throw new Error(errorMessage);
+    } else {
+      // Check if cache is stale (older than 5 minutes)
+      const lastSyncedAt = getCacheTimestamp();
+      const isStale = !lastSyncedAt || (Date.now() - lastSyncedAt > 5 * 60 * 1000);
+      if (isStale) {
+        // Silent background sync
+        useCheckinCacheStore.getState().syncCache().catch(console.warn);
       }
     }
+
+    const { users, filterStatus } = get();
+
+    // Perform client-side pagination / search count calculation
+    const filtered = users.filter((user) => {
+      const matchesSearch =
+        !search ||
+        user.display_name.toLowerCase().includes(search.toLowerCase()) ||
+        user.email.toLowerCase().includes(search.toLowerCase()) ||
+        user.username.toLowerCase().includes(search.toLowerCase()) ||
+        user.qr_code.unique_id?.toLowerCase().includes(search.toLowerCase());
+
+      const matchesFilter =
+        filterStatus === "all" ||
+        (filterStatus === "active" && user.membership.is_active && !user.membership.is_paused) ||
+        (filterStatus === "paused" && user.membership.is_paused) ||
+        (filterStatus === "inactive" && !user.membership.is_active && !user.membership.is_paused) ||
+        (filterStatus === "no_membership" && user.membership.status === "no_membership") ||
+        (filterStatus === "visit_based" && user.membership.is_visit_based) ||
+        (filterStatus === "low_visits" && user.membership.is_visit_based && user.membership.visit_info && user.membership.visit_info.remaining_visits <= 3) ||
+        (filterStatus === "exhausted_visits" && user.membership.is_visit_based && user.membership.visit_info && user.membership.visit_info.remaining_visits <= 0);
+
+      return matchesSearch && matchesFilter;
+    });
+
+    const totalCount = filtered.length;
+    const computedTotalPages = Math.max(1, Math.ceil(totalCount / perPage));
+
+    set({
+      total: totalCount,
+      totalPages: computedTotalPages,
+      currentPage: page
+    });
   },
 
   fetchAllUsers: async (page = 1, search = "", perPage = 20) => {
@@ -644,11 +709,13 @@ export const useUsersStore = create<UsersState>((set, get) => ({
 
       if (response.success) {
         const { users } = get();
+        const updatedUsers = [response.user, ...users];
         set({
-          users: [response.user, ...users],
+          users: updatedUsers,
           loading: false,
           error: null,
         });
+        saveToCacheAndSync(updatedUsers);
         return response.user;
       } else {
         // Capture the specific error message from the response
@@ -689,6 +756,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
           loading: false,
           error: null,
         });
+        saveToCacheAndSync(updatedUsers);
 
         return response.user;
       } else {
@@ -725,6 +793,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
           loading: false,
           error: null,
         });
+        saveToCacheAndSync(filteredUsers);
       } else {
         const errorMessage = response?.message || "Failed to delete user";
         set({ loading: false, error: errorMessage });
@@ -743,7 +812,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
   selectUser: (user) => set({ selectedUser: user }),
 
   setSearchTerm: (term) => {
-    set({ searchTerm: term });
+    set({ searchTerm: term, currentPage: 1 });
     const { fetchUsers } = get();
     fetchUsers(1, term);
   },
@@ -752,15 +821,15 @@ export const useUsersStore = create<UsersState>((set, get) => ({
 
   setCurrentPage: (page) => {
     set({ currentPage: page });
-    // Fetch users for the new page
     const { fetchUsers, searchTerm } = get();
     fetchUsers(page, searchTerm);
   },
 
   getFilteredUsers: () => {
-    const { users, searchTerm, filterStatus } = get();
+    const { users, searchTerm, filterStatus, currentPage } = get();
+    const perPage = 20;
 
-    return users.filter((user) => {
+    const filtered = users.filter((user) => {
       const matchesSearch =
         !searchTerm ||
         user.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -781,7 +850,6 @@ export const useUsersStore = create<UsersState>((set, get) => ({
           !user.membership.is_paused) ||
         (filterStatus === "no_membership" &&
           user.membership.status === "no_membership") ||
-        // Visit-based filters
         (filterStatus === "visit_based" && user.membership.is_visit_based) ||
         (filterStatus === "low_visits" &&
           user.membership.is_visit_based &&
@@ -794,6 +862,9 @@ export const useUsersStore = create<UsersState>((set, get) => ({
 
       return matchesSearch && matchesFilter;
     });
+
+    const startIndex = (currentPage - 1) * perPage;
+    return filtered.slice(startIndex, startIndex + perPage);
   },
 
   clearError: () => set({ error: null }),
@@ -850,6 +921,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
           loading: false,
           error: null,
         });
+        saveToCacheAndSync(updatedUsers);
 
         return response;
       } else {
@@ -914,6 +986,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
           loading: false,
           error: null,
         });
+        saveToCacheAndSync(updatedUsers);
 
         return response;
       } else {
@@ -1026,6 +1099,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
           qrCodeLoading: false,
           error: null,
         });
+        saveToCacheAndSync(updatedUsers);
 
         return response;
       } else {
@@ -1240,6 +1314,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
           loading: false,
           error: null,
         });
+        saveToCacheAndSync(updatedUsers);
 
         return response;
       } else {
@@ -1321,6 +1396,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
           loading: false,
           error: null,
         });
+        saveToCacheAndSync(updatedUsers);
 
         return response;
       } else {

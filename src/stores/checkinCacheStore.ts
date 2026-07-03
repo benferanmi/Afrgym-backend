@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { GymUser } from "./usersStore";
+import { GymUser, useUsersStore } from "./usersStore";
 
 const BASE_URL = "https://afrgym.com.ng/wp-json/gym-admin/v1";
 const STORAGE_KEY = "gym-one-checkin-cache";
@@ -160,6 +160,7 @@ export const useCheckinCacheStore = create<CheckinCacheState>((set, get) => ({
   error: null,
 
   syncCache: async () => {
+    if (get().isSyncing) return;
     set({ isSyncing: true, error: null });
     try {
       // 1. Fetch all users page by page
@@ -198,6 +199,13 @@ export const useCheckinCacheStore = create<CheckinCacheState>((set, get) => ({
         lastSyncedAt,
         isSyncing: false,
         error: null,
+      });
+
+      // Synchronize to useUsersStore
+      useUsersStore.setState({
+        users: allUsers,
+        total: allUsers.length,
+        totalPages: Math.max(1, Math.ceil(allUsers.length / 20)),
       });
     } catch (err: any) {
       console.error("Cache sync failed:", err);
@@ -370,5 +378,5 @@ if (typeof window !== "undefined") {
     useCheckinCacheStore.getState().syncCache().catch((err) => {
       console.warn("Background cache sync failed:", err);
     });
-  }, 3 * 60 * 1000);
+  }, 5 * 60 * 1000);
 }
