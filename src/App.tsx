@@ -8,6 +8,7 @@ import { ProtectedRoute } from "./pages/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import Members from "./pages/Members";
 import QRCodes from "./pages/QRCodes";
+import ScanMode from "./pages/ScanMode";
 import Memberships from "./pages/Memberships";
 import EmailCenter from "./pages/EmailCenter";
 import Settings from "./pages/Settings";
@@ -46,6 +47,14 @@ const App = () => (
             element={
               <ProtectedRoute>
                 <QRCodes />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/scan-mode"
+            element={
+              <ProtectedRoute>
+                <ScanMode />
               </ProtectedRoute>
             }
           />

@@ -11,6 +11,8 @@ import {
   CreditCard,
   Mail,
   ShoppingBagIcon,
+  RefreshCw,
+  Camera,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,11 +26,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuthStore } from "@/stores/authStore";
+import { useCheckinCacheStore } from "@/stores/checkinCacheStore";
 import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
 const navigationItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Scan Mode", url: "/scan-mode", icon: Camera },
   { title: "Members", url: "/members", icon: Users },
   { title: "QR Codes", url: "/qr-codes", icon: QrCode },
   { title: "Memberships", url: "/memberships", icon: CreditCard },
@@ -38,6 +42,7 @@ const navigationItems = [
 
 export function AppHeader() {
   const { user, logout } = useAuthStore();
+  const { isSyncing, syncCache, lastSyncedAt } = useCheckinCacheStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
 
@@ -83,6 +88,22 @@ export function AppHeader() {
 
         {/* Actions */}
         <div className="flex items-center gap-2 md:gap-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={syncCache}
+            disabled={isSyncing}
+            className="flex items-center gap-2 h-9 px-3"
+          >
+            <RefreshCw className={cn("h-4 w-4", isSyncing && "animate-spin")} />
+            <span className="hidden sm:inline">Refresh Cache</span>
+            {lastSyncedAt && (
+              <span className="text-[10px] text-muted-foreground hidden lg:inline">
+                ({new Date(lastSyncedAt).toLocaleTimeString()})
+              </span>
+            )}
+          </Button>
+
           {/* User Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
