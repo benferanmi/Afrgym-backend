@@ -1,6 +1,11 @@
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { useCheckinCacheStore } from "@/stores/checkinCacheStore";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +31,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   XCircle,
+  Fingerprint,
+  Loader2,
 } from "lucide-react";
 import {
   GymUser,
@@ -55,6 +62,90 @@ export function ViewMemberDialog({
   onEdit,
 }: ViewMemberDialogProps) {
   if (!user) return null;
+
+  const { fingerprints, enrollFingerprint, deleteFingerprint, getDeviceStatus } = useCheckinCacheStore();
+  
+  const [deviceSerial, setDeviceSerial] = useState("");
+  const [zkPin, setZkPin] = useState("");
+  const [isLoadingStatus, setIsLoadingStatus] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [isEnrolling, setIsEnrolling] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [enrollError, setEnrollError] = useState("");
+
+  const enrollment = fingerprints.find((f) => f.user_id === user.id && f.is_active);
+
+  useEffect(() => {
+    if (open && user) {
+      setZkPin(user.id.toString());
+      setEnrollError("");
+      
+      const fetchDeviceStatus = async () => {
+        setIsLoadingStatus(true);
+        try {
+          const status = await getDeviceStatus();
+          if (status?.success) {
+            setDeviceSerial(status.device_serial || "");
+            setIsConnected(status.is_connected || false);
+          }
+        } catch (e) {
+          console.warn("Failed to fetch fingerprint device status:", e);
+        } finally {
+          setIsLoadingStatus(false);
+        }
+      };
+      
+      fetchDeviceStatus();
+    }
+  }, [open, user, getDeviceStatus]);
+
+  const handleEnroll = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    if (!zkPin.trim()) {
+      setEnrollError("ZK PIN is required");
+      return;
+    }
+    if (!deviceSerial.trim()) {
+      setEnrollError("Device Serial is required. Connect a device or enter serial manually.");
+      return;
+    }
+
+    setIsEnrolling(true);
+    setEnrollError("");
+    try {
+      await enrollFingerprint(user.id, zkPin, deviceSerial);
+      toast.success("Fingerprint registered on database successfully.");
+    } catch (err: any) {
+      console.error(err);
+      const errMsg = err?.message || "Failed to save enrollment to database.";
+      setEnrollError(errMsg);
+      toast.error(errMsg);
+    } finally {
+      setIsEnrolling(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!user) return;
+    if (!confirm("Are you sure you want to deactivate this member's fingerprint enrollment?")) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setEnrollError("");
+    try {
+      await deleteFingerprint(user.id, enrollment?.device_serial);
+      toast.success("Fingerprint enrollment deactivated successfully.");
+    } catch (err: any) {
+      console.error(err);
+      const errMsg = err?.message || "Failed to deactivate fingerprint.";
+      setEnrollError(errMsg);
+      toast.error(errMsg);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const getInitials = (firstName: string, lastName: string) => {
     return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
@@ -491,6 +582,135 @@ export function ViewMemberDialog({
                 </>
               )}
             </div>
+          </div>
+
+          <Separator />
+
+          {/* Fingerprint Biometric */}
+          <div className="space-y-4">
+            <h4 className="font-medium flex items-center gap-2">
+              <Fingerprint className="h-4 w-4" />
+              Fingerprint Biometric
+            </h4>
+            
+            {enrollment ? (
+              <div className="bg-muted/30 p-4 rounded-lg border space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">Status:</span>
+                    <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+                      Enrolled
+                    </Badge>
+                  </div>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleDelete}
+                    disabled={isDeleting}
+                    className="flex items-center gap-1.5"
+                  >
+                    {isDeleting ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : null}
+                    Deactivate Fingerprint
+                  </Button>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="space-y-1">
+                    <div className="text-muted-foreground text-xs">Device User ID / PIN</div>
+                    <div className="font-medium font-mono">{enrollment.zk_pin}</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-muted-foreground text-xs">Device Serial Number</div>
+                    <div className="font-medium font-mono">{enrollment.device_serial}</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-muted-foreground text-xs">Enrolled At</div>
+                    <div className="font-medium">{formatDate(enrollment.enrolled_at)}</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-muted-foreground text-xs">Scan Count</div>
+                    <div className="font-medium">{enrollment.scan_count} scans</div>
+                  </div>
+                  {enrollment.last_scan && (
+                    <div className="space-y-1 col-span-2">
+                      <div className="text-muted-foreground text-xs">Last Active Check-in</div>
+                      <div className="font-medium">{formatDate(enrollment.last_scan)}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-muted/10 p-4 rounded-lg border space-y-4">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-medium">Scanner Device:</span>
+                  {isLoadingStatus ? (
+                    <span className="flex items-center gap-1 text-muted-foreground">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Checking device...
+                    </span>
+                  ) : isConnected ? (
+                    <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+                      Connected ({deviceSerial})
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary">
+                      Disconnected {deviceSerial ? `(${deviceSerial})` : ""}
+                    </Badge>
+                  )}
+                </div>
+
+                <div className="text-xs text-yellow-600 bg-yellow-50/50 border border-yellow-100 p-3 rounded-md space-y-1">
+                  <p className="font-medium">Instructions for Enrollment:</p>
+                  <p>
+                    Register this member's fingerprint on the scanner first. When prompted for a User ID on the device, enter <strong className="font-semibold text-amber-900 bg-amber-100/60 px-1 rounded">{user.id}</strong> exactly — it can't be changed after saving.
+                  </p>
+                </div>
+
+                <form onSubmit={handleEnroll} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="zkPin" className="text-xs">Device User ID / PIN</Label>
+                      <Input
+                        id="zkPin"
+                        value={zkPin}
+                        onChange={(e) => setZkPin(e.target.value)}
+                        placeholder="e.g. 101"
+                        className="h-9 font-mono"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="deviceSerial" className="text-xs">Device Serial Number</Label>
+                      <Input
+                        id="deviceSerial"
+                        value={deviceSerial}
+                        onChange={(e) => setDeviceSerial(e.target.value)}
+                        placeholder="e.g. SN1234567890"
+                        className="h-9 font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  {enrollError && (
+                    <div className="text-xs text-red-600 font-medium">
+                      Error: {enrollError}
+                    </div>
+                  )}
+
+                  <Button
+                    type="submit"
+                    disabled={isEnrolling}
+                    className="w-full h-9 gradient-gym text-white flex items-center justify-center gap-1.5"
+                  >
+                    {isEnrolling ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : null}
+                    Save Enrollment to Database
+                  </Button>
+                </form>
+              </div>
+            )}
           </div>
 
           {/* Notes Section */}

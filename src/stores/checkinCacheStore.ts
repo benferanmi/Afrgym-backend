@@ -4,7 +4,7 @@ import { GymUser } from "./usersStore";
 const BASE_URL = "https://afrgym.com.ng/wp-json/gym-admin/v1";
 const STORAGE_KEY = "gym-one-checkin-cache";
 const GYM_IDENTIFIER = "afrgym_one";
-const GYM_TYPE = "gym_one";
+const GYM_TYPE = "gym-one";
 
 export interface FingerprintEnrollment {
   id: number;
@@ -45,6 +45,16 @@ interface CheckinCacheState {
   lookupByPin: (pin: string) => Promise<GymUser | null>;
   lookupByQrId: (qrId: string) => Promise<GymUser | null>;
   clearCache: () => void;
+  enrollFingerprint: (userId: number, zkPin: string, deviceSerial: string) => Promise<any>;
+  deleteFingerprint: (userId: number, deviceSerial?: string) => Promise<any>;
+  getDeviceStatus: () => Promise<{
+    success: boolean;
+    gym_identifier: string;
+    device_serial: string;
+    is_connected: boolean;
+    last_seen: string | null;
+    last_scan: any;
+  }>;
 }
 
 // Helper function to check if error is related to invalid token
@@ -272,6 +282,78 @@ export const useCheckinCacheStore = create<CheckinCacheState>((set, get) => ({
       lastSyncedAt: null,
       error: null,
     });
+  },
+
+  enrollFingerprint: async (userId: number, zkPin: string, deviceSerial: string) => {
+    const response = await apiCall("/fingerprint/enroll", {
+      method: "POST",
+      body: JSON.stringify({
+        user_id: userId,
+        zk_pin: zkPin,
+        device_serial: deviceSerial,
+        gym_identifier: GYM_IDENTIFIER,
+      }),
+    });
+
+    // Fetch only the updated fingerprint list
+    const enrollResponse: EnrolledResponse = await apiCall(
+      `/fingerprint/enrolled?gym_identifier=${GYM_IDENTIFIER}`
+    );
+    const fingerprints = enrollResponse?.enrollments || [];
+
+    // Save to localStorage to keep cache persistence consistent
+    const currentCache = localStorage.getItem(STORAGE_KEY);
+    let cacheData: CheckinCacheData = { users: get().users, fingerprints, lastSyncedAt: Date.now() };
+    if (currentCache) {
+      try {
+        const parsed = JSON.parse(currentCache);
+        cacheData.users = parsed.users || [];
+      } catch (e) {
+        console.warn("Failed to parse current checkin cache:", e);
+      }
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cacheData));
+
+    set({ fingerprints });
+    return response;
+  },
+
+  deleteFingerprint: async (userId: number, deviceSerial?: string) => {
+    const queryParams = new URLSearchParams();
+    if (deviceSerial) {
+      queryParams.append("device_serial", deviceSerial);
+    }
+    const queryString = queryParams.toString() ? `?${queryParams.toString()}` : "";
+
+    const response = await apiCall(`/fingerprint/enroll/${userId}${queryString}`, {
+      method: "DELETE",
+    });
+
+    // Fetch only the updated fingerprint list
+    const enrollResponse: EnrolledResponse = await apiCall(
+      `/fingerprint/enrolled?gym_identifier=${GYM_IDENTIFIER}`
+    );
+    const fingerprints = enrollResponse?.enrollments || [];
+
+    // Save to localStorage
+    const currentCache = localStorage.getItem(STORAGE_KEY);
+    let cacheData: CheckinCacheData = { users: get().users, fingerprints, lastSyncedAt: Date.now() };
+    if (currentCache) {
+      try {
+        const parsed = JSON.parse(currentCache);
+        cacheData.users = parsed.users || [];
+      } catch (e) {
+        console.warn("Failed to parse current checkin cache:", e);
+      }
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cacheData));
+
+    set({ fingerprints });
+    return response;
+  },
+
+  getDeviceStatus: async () => {
+    return await apiCall(`/fingerprint/status?gym_identifier=${GYM_IDENTIFIER}`);
   }
 }));
 
