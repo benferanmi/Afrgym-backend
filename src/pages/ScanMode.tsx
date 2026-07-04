@@ -125,10 +125,15 @@ export default function ScanMode() {
       }
     };
 
-    // Run immediately then poll every 1 second (tightened from 2s to cut
-    // worst-case pickup latency; endpoint just reads a transient, cheap enough).
+    // Run immediately then poll every 3 seconds.
+    // Reasoning: The actual bottleneck is device-side push delay (5-40+ seconds, confirmed
+    // from production logs), not the polling interval. Polling faster than the device can
+    // push doesn't reduce perceived latency in any meaningful way, but it does double/triple
+    // request load on the backend for no benefit — and the backend is already showing signs
+    // of load strain (unrelated MCProtectFW plugin logging MySQL "commands out of sync" errors
+    // during normal operation). 3s is a safe, low-load default.
     fetchStatus();
-    const interval = setInterval(fetchStatus, 1000);
+    const interval = setInterval(fetchStatus, 3000);
 
     return () => clearInterval(interval);
   }, [isActive]);
