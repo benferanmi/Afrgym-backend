@@ -51,7 +51,7 @@ export default function ScanMode() {
     serial: string;
     lastSeen: string | null;
   } | null>(null);
-  
+
   const [scannedUser, setScannedUser] = useState<GymUser | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);
   const [accessReason, setAccessReason] = useState("");
@@ -97,7 +97,7 @@ export default function ScanMode() {
         if (!res.ok) throw new Error("Failed to fetch fingerprint status");
 
         const data: StatusResponse = await res.json();
-        
+
         setDeviceStatus({
           isConnected: data.is_connected,
           serial: data.device_serial,
@@ -125,9 +125,10 @@ export default function ScanMode() {
       }
     };
 
-    // Run immediately then poll every 2 seconds
+    // Run immediately then poll every 1 second (tightened from 2s to cut
+    // worst-case pickup latency; endpoint just reads a transient, cheap enough).
     fetchStatus();
-    const interval = setInterval(fetchStatus, 2000);
+    const interval = setInterval(fetchStatus, 1000);
 
     return () => clearInterval(interval);
   }, [isActive]);
@@ -151,9 +152,9 @@ export default function ScanMode() {
       const hasActiveMembership = membership && membership.is_active;
       const isPaused = membership && membership.is_paused;
       const isVisitBased = membership && membership.is_visit_based;
-      
+
       let remainingVisits = isVisitBased && membership.visit_info ? membership.visit_info.remaining_visits : 0;
-      
+
       let isGranted = hasActiveMembership && !isPaused;
       let reason = "";
 
@@ -207,7 +208,7 @@ export default function ScanMode() {
             Real-time biometric monitoring of gym entry and check-in logs.
           </p>
         </div>
-        
+
         <div className="flex items-center gap-3">
           <Button
             variant="outline"
@@ -339,7 +340,7 @@ export default function ScanMode() {
                       <User className="w-12 h-12 text-muted-foreground m-6" />
                     )}
                   </div>
-                  
+
                   <div className="text-center sm:text-left space-y-1">
                     <h2 className="text-2xl font-bold text-foreground">
                       {scannedUser.display_name}
@@ -428,11 +429,10 @@ export default function ScanMode() {
 
                   {/* Access Status Card */}
                   <div
-                    className={`p-4 rounded-xl border-2 flex items-start gap-3 transition-colors ${
-                      accessDenied
+                    className={`p-4 rounded-xl border-2 flex items-start gap-3 transition-colors ${accessDenied
                         ? "bg-red-100/40 border-red-300 text-red-900"
                         : "bg-green-100/40 border-green-300 text-green-900"
-                    }`}
+                      }`}
                   >
                     {accessDenied ? (
                       <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
