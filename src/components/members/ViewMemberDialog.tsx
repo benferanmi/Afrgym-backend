@@ -4,7 +4,6 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { useCheckinCacheStore } from "@/stores/checkinCacheStore";
 import {
@@ -65,7 +64,7 @@ export function ViewMemberDialog({
   if (!user) return null;
 
   const { fingerprints, enrollFingerprint, deleteFingerprint, getDeviceStatus } = useCheckinCacheStore();
-  
+
   const [deviceSerial, setDeviceSerial] = useState("");
   const [zkPin, setZkPin] = useState("");
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
@@ -73,7 +72,6 @@ export function ViewMemberDialog({
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [enrollError, setEnrollError] = useState("");
-  const [isManualSerial, setIsManualSerial] = useState(false);
 
   const enrollment = fingerprints.find((f) => f.user_id === user.id && f.is_active);
 
@@ -81,8 +79,7 @@ export function ViewMemberDialog({
     if (open && user) {
       setZkPin(user.id.toString());
       setEnrollError("");
-      setIsManualSerial(false);
-      
+
       const fetchDeviceStatus = async () => {
         setIsLoadingStatus(true);
         try {
@@ -97,7 +94,7 @@ export function ViewMemberDialog({
           setIsLoadingStatus(false);
         }
       };
-      
+
       fetchDeviceStatus();
     }
   }, [open, user, getDeviceStatus]);
@@ -117,8 +114,32 @@ export function ViewMemberDialog({
     setIsEnrolling(true);
     setEnrollError("");
     try {
-      await enrollFingerprint(user.id, zkPin, deviceSerial);
-      toast.success("Fingerprint registered on database successfully.");
+      const result = await enrollFingerprint(user.id, zkPin, deviceSerial);
+
+      const otherGymLabel = result?.other_gym_identifier === "afrgym_two" ? "Gym Two" : "Gym One";
+      switch (result?.link_status) {
+        case "created":
+        case "reactivated":
+          toast.success(
+            `Enrolled here. ID ${zkPin} is also reserved on ${otherGymLabel}'s device — just scan this member there and use the same ID, no extra form needed.`
+          );
+          break;
+        case "already_active":
+          toast.success("Fingerprint registered on database successfully.");
+          break;
+        case "collision":
+          toast.warning(
+            `Enrolled here, but ID ${zkPin} is already used by a different member on ${otherGymLabel}'s device. Pick a different ID when scanning this member there.`
+          );
+          break;
+        case "not_configured":
+          toast.success(
+            `Fingerprint registered on database successfully. (${otherGymLabel}'s device isn't configured yet, so it wasn't auto-linked there.)`
+          );
+          break;
+        default:
+          toast.success("Fingerprint registered on database successfully.");
+      }
     } catch (err: any) {
       console.error(err);
       const errMsg = err?.message || "Failed to save enrollment to database.";
@@ -595,7 +616,7 @@ export function ViewMemberDialog({
               <Fingerprint className="h-4 w-4" />
               Fingerprint Biometric
             </h4>
-            
+
             {enrollment ? (
               <div className="bg-muted/30 p-4 rounded-lg border space-y-4">
                 <div className="flex items-center justify-between">
@@ -618,7 +639,7 @@ export function ViewMemberDialog({
                     Deactivate Fingerprint
                   </Button>
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div className="space-y-1">
                     <div className="text-muted-foreground text-xs">Device User ID / PIN</div>
@@ -669,6 +690,9 @@ export function ViewMemberDialog({
                   <p>
                     Register this member's fingerprint on the scanner first. When prompted for a User ID on the device, enter <strong className="font-semibold text-amber-900 bg-amber-100/60 px-1 rounded">{user.id}</strong> exactly — it can't be changed after saving.
                   </p>
+                  <p>
+                    Saving this also reserves ID {user.id} on the other gym's device automatically. If this member needs to check in at both locations, no second form here — just scan them on the other device and make sure it's given the same ID.
+                  </p>
                 </div>
 
                 <form onSubmit={handleEnroll} className="space-y-4">
@@ -684,44 +708,14 @@ export function ViewMemberDialog({
                       />
                     </div>
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor="deviceSerial" className="text-xs">Device Serial Number</Label>
-                        {!isConnected && (
-                          <div className="flex items-center gap-1.5">
-                            <Switch
-                              id="manual-serial-toggle"
-                              checked={isManualSerial}
-                              onCheckedChange={setIsManualSerial}
-                            />
-                            <Label htmlFor="manual-serial-toggle" className="text-[10px] text-muted-foreground cursor-pointer">
-                              Enter Manually
-                            </Label>
-                          </div>
-                        )}
-                      </div>
-                      
-                      {isConnected ? (
-                        <div className="h-9 px-3 py-1 bg-green-50 text-green-800 border border-green-200 rounded-md flex items-center justify-between text-xs font-mono">
-                          <span>Device Serial: {deviceSerial || "Unknown"}</span>
-                          <span className="text-[10px] text-green-600 font-sans">✓ auto-detected</span>
-                        </div>
-                      ) : isManualSerial ? (
-                        <Input
-                          id="deviceSerial"
-                          value={deviceSerial}
-                          onChange={(e) => setDeviceSerial(e.target.value)}
-                          placeholder="e.g. SN1234567890"
-                          className="h-9 font-mono text-xs"
-                        />
-                      ) : (
-                        <Input
-                          id="deviceSerial"
-                          value={deviceSerial}
-                          disabled
-                          placeholder="No device connected (offline)"
-                          className="h-9 font-mono text-xs bg-muted cursor-not-allowed"
-                        />
-                      )}
+                      <Label htmlFor="deviceSerial" className="text-xs">Device Serial Number</Label>
+                      <Input
+                        id="deviceSerial"
+                        value={deviceSerial}
+                        onChange={(e) => setDeviceSerial(e.target.value)}
+                        placeholder="e.g. SN1234567890"
+                        className="h-9 font-mono"
+                      />
                     </div>
                   </div>
 
