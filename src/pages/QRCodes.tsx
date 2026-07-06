@@ -22,6 +22,8 @@ import {
   AlertTriangle,
   Edit,
   CreditCard,
+  Loader2,
+  Fingerprint,
 } from "lucide-react";
 import {
   useUsersStore,
@@ -39,6 +41,9 @@ import { Separator } from "@/components/ui/separator";
 import { EditMemberDialog } from "@/components/members/EditMemberDialog";
 import { IDCardGenerator } from "@/components/members/IDCardGenerator";
 import { useCheckinCacheStore } from "@/stores/checkinCacheStore";
+import { useCrossGymEnrollmentStatus } from "@/hooks/useCrossGymEnrollmentStatus";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 const BASE_URL = "https://afrgym.com.ng/wp-json/gym-admin/v1";
 
@@ -76,11 +81,54 @@ export default function QRCodes() {
   const [idLookupLoading, setIdLookupLoading] = useState(false);
   const [idLookupError, setIdLookupError] = useState("");
 
+  const { enrollFingerprint, deleteFingerprint, getDeviceStatus } = useCheckinCacheStore();
+  const { crossGymEnrollment, loading: enrollmentLoading, setCrossGymEnrollment, refreshEnrollment } = useCrossGymEnrollmentStatus(lookupResult?.user?.id);
+  
+  const [zkPin, setZkPin] = useState("");
+  const [deviceSerial, setDeviceSerial] = useState("");
+  const [isLoadingStatus, setIsLoadingStatus] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [isEnrolling, setIsEnrolling] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [enrollError, setEnrollError] = useState("");
+  const [isManualSerial, setIsManualSerial] = useState(false);
+
   // Load initial data - fetch gym-specific users for the list
   useEffect(() => {
     fetchUsers(); // Gym-specific users only
     getQRCodeStatistics();
   }, [fetchUsers, getQRCodeStatistics]);
+
+  // When a new user is looked up, fetch device status for the fingerprint form
+  useEffect(() => {
+    if (lookupResult?.user && !enrollmentLoading) {
+      if (crossGymEnrollment) {
+        setZkPin(crossGymEnrollment.zk_pin);
+        setDeviceSerial(crossGymEnrollment.device_serial);
+      } else {
+        setZkPin(lookupResult.user.id.toString());
+        setEnrollError("");
+        setIsManualSerial(false);
+
+        const fetchDeviceStatus = async () => {
+          setIsLoadingStatus(true);
+          try {
+            const status = await getDeviceStatus();
+            if (status?.success) {
+              setDeviceSerial(status.device_serial || "");
+              setIsConnected(status.is_connected || false);
+            }
+          } catch (e) {
+            console.warn("Failed to fetch fingerprint device status:", e);
+          } finally {
+            setIsLoadingStatus(false);
+          }
+        };
+
+        fetchDeviceStatus();
+      }
+    }
+  }, [lookupResult?.user, crossGymEnrollment, enrollmentLoading, getDeviceStatus]);
 
   // Filter users based on search term (only searches gym-specific users in list)
   const filteredUsers = users.filter(
@@ -271,6 +319,47 @@ export default function QRCodes() {
     }
     // Refresh statistics
     getQRCodeStatistics();
+  };
+
+  const handleEnroll = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!lookupResult?.user) return;
+    if (!zkPin.trim() || (!deviceSerial.trim() && !isManualSerial)) {
+      setEnrollError("Please provide both a PIN and a Device Serial.");
+      return;
+    }
+
+    setIsEnrolling(true);
+    setEnrollError("");
+    try {
+      await enrollFingerprint(lookupResult.user.id, zkPin.trim(), deviceSerial.trim());
+      // Refresh the state
+      refreshEnrollment();
+      alert("Fingerprint enrollment saved successfully.");
+    } catch (err: any) {
+      setEnrollError(err?.message || "Failed to save enrollment to database.");
+    } finally {
+      setIsEnrolling(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!lookupResult?.user) return;
+    if (!window.confirm("Are you sure you want to deactivate this member's fingerprint? They will no longer be able to check in via the scanner until re-enrolled.")) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setEnrollError("");
+    try {
+      await deleteFingerprint(lookupResult.user.id, crossGymEnrollment?.device_serial);
+      setCrossGymEnrollment(null);
+      alert("Fingerprint enrollment deactivated successfully.");
+    } catch (err: any) {
+      setEnrollError(err?.message || "Failed to deactivate fingerprint.");
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleSearch = (value) => {
@@ -585,6 +674,9 @@ export default function QRCodes() {
                       {lookupResult.user.email}
                     </p>
                     <p className="text-sm text-muted-foreground font-mono">
+                      Member ID / PIN: {lookupResult.user.id}
+                    </p>
+                    <p className="text-sm text-muted-foreground font-mono">
                       QR Code: {lookupResult.user.unique_id}
                     </p>
                   </div>
@@ -806,6 +898,180 @@ export default function QRCodes() {
                     </div>
                   </div>
                 )}
+
+                <Separator />
+                
+                {/* Fingerprint Biometric */}
+                <div className="space-y-4">
+                  <h4 className="font-medium flex items-center gap-2">
+                    <Fingerprint className="w-4 h-4" />
+                    Fingerprint Biometric
+                  </h4>
+
+                  {enrollmentLoading ? (
+                    <div className="bg-muted/10 p-4 rounded-lg border border-muted/20 flex flex-col items-center justify-center space-y-2 py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">Checking enrollment status...</p>
+                    </div>
+                  ) : crossGymEnrollment ? (
+                    <div className="bg-green-50/50 p-4 rounded-lg border border-green-100 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">Status:</span>
+                          <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+                            Active Enrollment
+                          </Badge>
+                        </div>
+                        {(!crossGymEnrollment.gym_identifier || crossGymEnrollment.gym_identifier === "afrgym_one") && (
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            onClick={handleDelete}
+                            disabled={isDeleting}
+                            className="flex items-center gap-1.5 h-8 text-xs"
+                          >
+                            {isDeleting ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : null}
+                            Deactivate Fingerprint
+                          </Button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 text-xs">
+                        <div className="space-y-1">
+                          <div className="text-muted-foreground">Device User ID / PIN</div>
+                          <div className="font-medium font-mono">{crossGymEnrollment.zk_pin}</div>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="text-muted-foreground">Device Serial Number</div>
+                          <div className="font-medium font-mono">{crossGymEnrollment.device_serial}</div>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="text-muted-foreground">Gym Location</div>
+                          <div className="font-medium">{crossGymEnrollment.gym_identifier === "afrgym_two" ? "Gym Two" : "Gym One"}</div>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="text-muted-foreground">Enrolled At</div>
+                          <div className="font-medium">{formatDate(crossGymEnrollment.enrolled_at)}</div>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="text-muted-foreground">Scan Count</div>
+                          <div className="font-medium">{crossGymEnrollment.scan_count} scans</div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-muted/10 p-4 rounded-lg border border-muted/20 space-y-4">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="font-medium">Scanner Device:</span>
+                        {isLoadingStatus ? (
+                          <span className="flex items-center gap-1 text-muted-foreground">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            Checking device...
+                          </span>
+                        ) : isConnected ? (
+                          <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+                            Connected ({deviceSerial})
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary">
+                            Disconnected {deviceSerial ? `(${deviceSerial})` : ""}
+                          </Badge>
+                        )}
+                      </div>
+
+                      <div className="text-xs text-yellow-600 bg-yellow-50/50 border border-yellow-100 p-3 rounded-md space-y-1">
+                        <p className="font-medium">Instructions for Enrollment:</p>
+                        <p>
+                          Register this member's fingerprint on the scanner first. Input the scanner's User ID / PIN below to link it.
+                        </p>
+                      </div>
+
+                      <form onSubmit={handleEnroll} className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="zkPin" className="text-xs">Device User ID / PIN</Label>
+                            <Input
+                              id="zkPin"
+                              value={zkPin}
+                              onChange={(e) => setZkPin(e.target.value)}
+                              placeholder="e.g. 101"
+                              className="h-9 font-mono text-xs"
+                              required
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <Label htmlFor="deviceSerial" className="text-xs">Device Serial Number</Label>
+                              {!isConnected && (
+                                <div className="flex items-center gap-1.5">
+                                  <Switch
+                                    id="manual-serial-toggle"
+                                    checked={isManualSerial}
+                                    onCheckedChange={setIsManualSerial}
+                                  />
+                                  <Label htmlFor="manual-serial-toggle" className="text-[10px] text-muted-foreground cursor-pointer">
+                                    Enter Manually
+                                  </Label>
+                                </div>
+                              )}
+                            </div>
+                            
+                            {isConnected ? (
+                              <div className="h-9 px-3 py-1 bg-green-50 text-green-800 border border-green-200 rounded-md flex items-center justify-between text-xs font-mono">
+                                <span>Device Serial: {deviceSerial || "Unknown"}</span>
+                                <span className="text-[10px] text-green-600 font-sans">✓ auto-detected</span>
+                              </div>
+                            ) : isManualSerial ? (
+                              <Input
+                                id="deviceSerial"
+                                value={deviceSerial}
+                                onChange={(e) => setDeviceSerial(e.target.value)}
+                                placeholder="e.g. SN1234567890"
+                                className="h-9 font-mono text-xs"
+                                required
+                              />
+                            ) : (
+                              <Input
+                                id="deviceSerial"
+                                value={deviceSerial}
+                                disabled
+                                placeholder="No device connected (offline)"
+                                className="h-9 font-mono text-xs bg-muted cursor-not-allowed"
+                              />
+                            )}
+                          </div>
+                        </div>
+
+                        {enrollError && (
+                          <div className="text-xs text-red-600 font-medium">
+                            Error: {enrollError}
+                          </div>
+                        )}
+
+                        <Button
+                          type="submit"
+                          disabled={isEnrolling || (!isConnected && !isManualSerial) || !zkPin}
+                          className="w-full h-9 bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-1.5"
+                        >
+                          {isEnrolling ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            <>
+                              <Fingerprint className="h-4 w-4" />
+                              Save Enrollment to Database
+                            </>
+                          )}
+                        </Button>
+                      </form>
+                    </div>
+                  )}
+                </div>
 
                 <Button
                   onClick={() => {

@@ -41,10 +41,8 @@ import {
 import { toast } from "sonner";
 import { useCheckinCacheStore, FingerprintEnrollment } from "@/stores/checkinCacheStore";
 import {
-  GymUser,
-  getMembershipStatusColor,
-  getMembershipStatusDisplay,
-} from "@/stores/usersStore";
+import { GymUser, getMembershipStatusColor, getMembershipStatusDisplay } from "@/stores/usersStore";
+import { GYM_IDENTIFIER } from "@/stores/checkinCacheStore";
 
 const BASE_URL = "https://afrgym.com.ng/wp-json/gym-admin/v1";
 
@@ -89,7 +87,6 @@ export function FingerprintEnrollDialog({
   const [searchError, setSearchError] = useState("");
 
   const [selectedMember, setSelectedMember] = useState<GymUser | null>(null);
-  const [selectedGym, setSelectedGym] = useState<string>("");
   const [existingEnrollment, setExistingEnrollment] = useState<FingerprintEnrollment | null>(null);
   const [isLoadingEnrollment, setIsLoadingEnrollment] = useState(false);
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
@@ -106,8 +103,6 @@ export function FingerprintEnrollDialog({
     setDebouncedQuery("");
     setSearchResults([]);
     setSelectedMember(null);
-    setSelectedGym("");
-    setExistingEnrollment(null);
     setIsConnected(false);
     setDeviceSerial("");
     setIsManualSerial(false);
@@ -194,30 +189,22 @@ export function FingerprintEnrollDialog({
     }
   };
 
-  const handleGymChange = async (gym: string) => {
-    setSelectedGym(gym);
-    setExistingEnrollment(null);
-    setIsConnected(false);
-    setDeviceSerial("");
-    setIsManualSerial(false);
-    
-    if (selectedMember) {
-      await loadGymAndEnrollmentData(gym, selectedMember.id);
-    }
-  };
+
 
   const handleMemberSelect = async (member: GymUser) => {
     setSelectedMember(member);
     setSearchQuery("");
     setSearchResults([]);
+    setExistingEnrollment(null);
+    setIsConnected(false);
+    setDeviceSerial("");
+    setIsManualSerial(false);
     
-    if (selectedGym) {
-      await loadGymAndEnrollmentData(selectedGym, member.id);
-    }
+    await loadGymAndEnrollmentData(GYM_IDENTIFIER, member.id);
   };
 
   const handleEnroll = async () => {
-    if (!selectedMember || !selectedGym) return;
+    if (!selectedMember) return;
     
     if (!deviceSerial && !isManualSerial) {
       setEnrollError("Device Serial is required. Connect a device or enter serial manually.");
@@ -234,7 +221,7 @@ export function FingerprintEnrollDialog({
           user_id: selectedMember.id,
           zk_pin: String(selectedMember.id),
           device_serial: deviceSerial,
-          gym_identifier: selectedGym
+          gym_identifier: GYM_IDENTIFIER
         })
       });
 
@@ -266,7 +253,7 @@ export function FingerprintEnrollDialog({
       }
 
       // Sync Gym One cache if Gym One is selected
-      if (selectedGym === "afrgym_one") {
+      if (GYM_IDENTIFIER === "afrgym_one") {
         useCheckinCacheStore.getState().syncCache().catch((err) => {
           console.warn("Auto sync cache failed:", err);
         });
@@ -470,21 +457,10 @@ export function FingerprintEnrollDialog({
                   </div>
                 </div>
 
-                {/* Step 3: Gym / device selection */}
+                {/* Step 3: Device selection / scanner context */}
                 <div className="space-y-2 border-t pt-4 animate-fade-in">
-                  <Label className="text-sm font-semibold">Step 3: Select Gym Location</Label>
-                  <Select value={selectedGym} onValueChange={handleGymChange}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a gym location..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="afrgym_one">Gym One</SelectItem>
-                      <SelectItem value="afrgym_two">Gym Two</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  {selectedGym && (
-                    <div className="bg-muted/10 p-4 rounded-lg border border-muted/20 space-y-4 mt-2">
+                  <Label className="text-sm font-semibold">Step 3: Scanner Context</Label>
+                  <div className="bg-muted/10 p-4 rounded-lg border border-muted/20 space-y-4">
                       <div className="flex items-center gap-2 text-sm">
                         <span className="font-medium text-xs">Scanner Device:</span>
                         {isLoadingStatus ? (
@@ -544,11 +520,10 @@ export function FingerprintEnrollDialog({
                         )}
                       </div>
                     </div>
-                  )}
                 </div>
 
                 {/* Step 4: Already enrolled warning block */}
-                {selectedGym && !isLoadingEnrollment && existingEnrollment && (
+                {!isLoadingEnrollment && existingEnrollment && (
                   <div className="space-y-2 border-t pt-4 animate-fade-in">
                     <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 p-4 rounded-md space-y-2 shadow-sm">
                       <div className="flex items-center gap-2 font-semibold text-xs">
@@ -589,7 +564,7 @@ export function FingerprintEnrollDialog({
             Cancel
           </Button>
 
-          {!enrollSuccess && selectedMember && selectedGym && (
+          {!enrollSuccess && selectedMember && (
             existingEnrollment ? (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -616,7 +591,7 @@ export function FingerprintEnrollDialog({
                   <AlertDialogHeader>
                     <AlertDialogTitle>Overwrite Existing Enrollment?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This member is already enrolled on the {selectedGym === "afrgym_one" ? "Gym One" : "Gym Two"} device.
+                      This member is already enrolled on the {GYM_IDENTIFIER === "afrgym_one" ? "Gym One" : "Gym Two"} device.
                       Re-enrolling will overwrite their existing access configuration. Are you sure you want to proceed?
                     </AlertDialogDescription>
                   </AlertDialogHeader>

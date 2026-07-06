@@ -63,6 +63,7 @@ export default function ScanMode() {
   const [scannedUser, setScannedUser] = useState<GymUser | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);
   const [accessReason, setAccessReason] = useState("");
+  const [isCheckingIn, setIsCheckingIn] = useState(false);
   
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editUserTarget, setEditUserTarget] = useState<GymUser | null>(null);
@@ -229,6 +230,64 @@ export default function ScanMode() {
       day: "numeric",
     });
   };
+
+  const handleCheckinUser = async () => {
+    if (!scannedUser?.id) return;
+
+    try {
+      setIsCheckingIn(true);
+      const authState = localStorage.getItem("gym-auth-storage");
+      let token = null;
+      if (authState) {
+        try {
+          const parsedAuth = JSON.parse(authState);
+          token = parsedAuth.state?.token;
+        } catch (error) {
+          console.warn("Failed to parse auth token:", error);
+        }
+      }
+
+      const response = await fetch(
+        `${BASE_URL}/checkin/${scannedUser.id}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token && { Authorization: `Bearer ${token}` }),
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to check in user");
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        setScannedUser({
+          ...scannedUser,
+          membership: {
+            ...scannedUser.membership!,
+            visit_info: data.visit_info,
+          },
+        });
+        alert(`Check-in successful! ${data.visit_info.remaining_visits} visits remaining.`);
+      }
+    } catch (err: any) {
+      alert(err.message || "Failed to check in user");
+    } finally {
+      setIsCheckingIn(false);
+    }
+  };
+
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const isVisitBased = scannedUser?.membership?.is_visit_based;
+  const visitLog = scannedUser?.membership?.visit_info?.visit_log || [];
+  const alreadyCheckedIn = visitLog.includes(today);
+  const remainingVisits = scannedUser?.membership?.visit_info?.remaining_visits || 0;
+  const canCheckIn = isVisitBased && scannedUser?.membership?.is_active && (remainingVisits > 0) && !alreadyCheckedIn;
 
   return (
     <div className="space-y-6">
@@ -494,18 +553,30 @@ export default function ScanMode() {
                           {accessDenied ? accessReason : "Biometric credentials match and membership is fully active."}
                         </p>
                       </div>
-                      <Button
-                        size="sm"
-                        variant={accessDenied ? "default" : "outline"}
-                        className={accessDenied ? "bg-red-600 hover:bg-red-700 text-white" : ""}
-                        onClick={() => {
-                          setEditUserTarget(scannedUser);
-                          setEditDialogOpen(true);
-                        }}
-                      >
-                        <Edit className="w-4 h-4 mr-1.5" />
-                        Assign / Change Plan
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        {canCheckIn && (
+                          <Button
+                            size="sm"
+                            onClick={handleCheckinUser}
+                            disabled={isCheckingIn}
+                            className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-md transition-all hover:scale-105 active:scale-95"
+                          >
+                            {isCheckingIn ? "Checking in..." : "Check In Now"}
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant={accessDenied ? "default" : "outline"}
+                          className={accessDenied ? "bg-red-600 hover:bg-red-700 text-white" : ""}
+                          onClick={() => {
+                            setEditUserTarget(scannedUser);
+                            setEditDialogOpen(true);
+                          }}
+                        >
+                          <Edit className="w-4 h-4 mr-1.5" />
+                          Assign / Change Plan
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>

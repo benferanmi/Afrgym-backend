@@ -3,7 +3,7 @@ import { GymUser, useUsersStore } from "./usersStore";
 
 const BASE_URL = "https://afrgym.com.ng/wp-json/gym-admin/v1";
 const STORAGE_KEY = "gym-one-checkin-cache";
-const GYM_IDENTIFIER = "afrgym_one";
+export const GYM_IDENTIFIER = "afrgym_one";
 const GYM_TYPE = "gym-one";
 
 export interface FingerprintEnrollment {
@@ -56,6 +56,7 @@ interface CheckinCacheState {
     last_seen: string | null;
     last_scan: any;
   }>;
+  checkCrossGymEnrollment: (userId: number) => Promise<FingerprintEnrollment | null>;
 }
 
 // Helper function to check if error is related to invalid token
@@ -357,6 +358,26 @@ export const useCheckinCacheStore = create<CheckinCacheState>((set, get) => ({
       lastSyncedAt: null,
       error: null,
     });
+  },
+
+  checkCrossGymEnrollment: async (userId: number) => {
+    const { fingerprints } = get();
+    // 1. Check local cache
+    const local = fingerprints.find(f => f.user_id === userId && f.is_active);
+    if (local) return local;
+
+    // 2. Fetch from other gym
+    const otherGym = "afrgym_two";
+    try {
+      const response: EnrolledResponse = await apiCall(`/fingerprint/enrolled?gym_identifier=${otherGym}`);
+      if (response?.success && response?.enrollments) {
+        const other = response.enrollments.find(f => f.user_id === userId && f.is_active);
+        return other || null;
+      }
+    } catch (e) {
+      console.warn("Cross-gym enrollment check failed", e);
+    }
+    return null;
   },
 
   enrollFingerprint: async (userId: number, zkPin: string, deviceSerial: string) => {
