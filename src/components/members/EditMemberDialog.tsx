@@ -841,6 +841,19 @@ export function EditMemberDialog({
               )}
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="member_id">Member ID</Label>
+              <Input
+                id="member_id"
+                readOnly
+                value={user?.id ?? ""}
+                className="bg-muted text-muted-foreground cursor-not-allowed"
+              />
+              <p className="text-xs text-muted-foreground">
+                This is the WordPress Member ID — it's also the fingerprint device PIN. It cannot be changed.
+              </p>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="username">Username</Label>

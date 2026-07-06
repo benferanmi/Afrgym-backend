@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useCheckinCacheStore } from "@/stores/checkinCacheStore";
-import { GymUser } from "@/stores/usersStore";
+import { GymUser, useUsersStore } from "@/stores/usersStore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,8 +19,16 @@ import {
   Pause,
   RefreshCw,
   History,
+  Edit,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import { EditMemberDialog } from "@/components/members/EditMemberDialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const BASE_URL = "https://afrgym.com.ng/wp-json/gym-admin/v1";
 const GYM_IDENTIFIER = "afrgym_one";
@@ -55,6 +63,18 @@ export default function ScanMode() {
   const [scannedUser, setScannedUser] = useState<GymUser | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);
   const [accessReason, setAccessReason] = useState("");
+  
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editUserTarget, setEditUserTarget] = useState<GymUser | null>(null);
+  
+  const [viewScanDialogOpen, setViewScanDialogOpen] = useState(false);
+  const [selectedScan, setSelectedScan] = useState<{
+    user: GymUser;
+    time: string;
+    status: "granted" | "denied";
+    reason?: string;
+  } | null>(null);
+
   const [recentScans, setRecentScans] = useState<Array<{
     user: GymUser;
     time: string;
@@ -67,9 +87,11 @@ export default function ScanMode() {
     scan_count: number;
   } | null>(null);
 
+  const effectiveIsActive = isActive && !editDialogOpen && !viewScanDialogOpen;
+
   // Poll fingerprint status
   useEffect(() => {
-    if (!isActive) return;
+    if (!effectiveIsActive) return;
 
     const fetchStatus = async () => {
       try {
@@ -136,7 +158,32 @@ export default function ScanMode() {
     const interval = setInterval(fetchStatus, 3000);
 
     return () => clearInterval(interval);
-  }, [isActive]);
+  }, [effectiveIsActive]);
+
+  const evaluateAccess = (user: GymUser) => {
+    const membership = user.membership;
+    const hasActiveMembership = membership && membership.is_active;
+    const isPaused = membership && membership.is_paused;
+    const isVisitBased = membership && membership.is_visit_based;
+
+    let remainingVisits = isVisitBased && membership.visit_info ? membership.visit_info.remaining_visits : 0;
+
+    let isGranted = hasActiveMembership && !isPaused;
+    let reason = "";
+
+    if (!hasActiveMembership) {
+      isGranted = false;
+      reason = "Membership is inactive or expired";
+    } else if (isPaused) {
+      isGranted = false;
+      reason = "Membership is currently paused";
+    } else if (isVisitBased && remainingVisits <= 0) {
+      isGranted = false;
+      reason = "No remaining visits in this membership cycle";
+    }
+    
+    return { isGranted, reason };
+  };
 
   const handleFingerprintScan = async (pin: string) => {
     try {
@@ -152,27 +199,7 @@ export default function ScanMode() {
 
       setScannedUser(user);
 
-      // Evaluate access permission
-      const membership = user.membership;
-      const hasActiveMembership = membership && membership.is_active;
-      const isPaused = membership && membership.is_paused;
-      const isVisitBased = membership && membership.is_visit_based;
-
-      let remainingVisits = isVisitBased && membership.visit_info ? membership.visit_info.remaining_visits : 0;
-
-      let isGranted = hasActiveMembership && !isPaused;
-      let reason = "";
-
-      if (!hasActiveMembership) {
-        isGranted = false;
-        reason = "Membership is inactive or expired";
-      } else if (isPaused) {
-        isGranted = false;
-        reason = "Membership is currently paused";
-      } else if (isVisitBased && remainingVisits <= 0) {
-        isGranted = false;
-        reason = "No remaining visits in this membership cycle";
-      }
+      const { isGranted, reason } = evaluateAccess(user);
 
       setAccessDenied(!isGranted);
       setAccessReason(reason);
@@ -290,9 +317,13 @@ export default function ScanMode() {
               ) : (
                 <div className="space-y-3">
                   {recentScans.map((scan, i) => (
-                    <div
+                    <button
                       key={i}
-                      className="flex items-center justify-between p-2.5 rounded-lg border text-sm bg-muted/10 hover:bg-muted/20 transition-colors"
+                      onClick={() => {
+                        setSelectedScan(scan);
+                        setViewScanDialogOpen(true);
+                      }}
+                      className="w-full flex items-center justify-between p-2.5 rounded-lg border text-sm bg-muted/10 hover:bg-muted/20 transition-colors text-left"
                     >
                       <div className="flex flex-col">
                         <span className="font-medium text-foreground">
@@ -309,7 +340,7 @@ export default function ScanMode() {
                       >
                         {scan.status === "granted" ? "Granted" : "Denied"}
                       </Badge>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -392,6 +423,16 @@ export default function ScanMode() {
                     </div>
 
                     <div className="space-y-1">
+                      <span className="text-xs text-muted-foreground uppercase font-bold">Start Date</span>
+                      <div className="flex items-center gap-1.5 text-foreground">
+                        <Calendar className="w-4 h-4 text-muted-foreground" />
+                        <span className="font-medium">
+                          {formatDate(scannedUser.membership?.start_date)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
                       <span className="text-xs text-muted-foreground uppercase font-bold">Expiry Date</span>
                       <div className="flex items-center gap-1.5 text-foreground">
                         <Calendar className="w-4 h-4 text-muted-foreground" />
@@ -444,13 +485,27 @@ export default function ScanMode() {
                     ) : (
                       <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
                     )}
-                    <div>
-                      <h4 className="font-bold">
-                        {accessDenied ? "Access Rejected" : "Access Granted"}
-                      </h4>
-                      <p className="text-sm mt-0.5 opacity-90">
-                        {accessDenied ? accessReason : "Biometric credentials match and membership is fully active."}
-                      </p>
+                    <div className="flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <h4 className="font-bold">
+                          {accessDenied ? "Access Rejected" : "Access Granted"}
+                        </h4>
+                        <p className="text-sm mt-0.5 opacity-90">
+                          {accessDenied ? accessReason : "Biometric credentials match and membership is fully active."}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant={accessDenied ? "default" : "outline"}
+                        className={accessDenied ? "bg-red-600 hover:bg-red-700 text-white" : ""}
+                        onClick={() => {
+                          setEditUserTarget(scannedUser);
+                          setEditDialogOpen(true);
+                        }}
+                      >
+                        <Edit className="w-4 h-4 mr-1.5" />
+                        Assign / Change Plan
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -475,6 +530,92 @@ export default function ScanMode() {
           )}
         </div>
       </div>
+
+      <Dialog open={viewScanDialogOpen} onOpenChange={setViewScanDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Recent Scan Details</DialogTitle>
+          </DialogHeader>
+          {selectedScan && (
+            <div className="space-y-6">
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 bg-muted rounded-full overflow-hidden border">
+                  {(selectedScan.user.profile_picture_url || selectedScan.user.avatar_url) ? (
+                    <img
+                      src={selectedScan.user.profile_picture_url || selectedScan.user.avatar_url}
+                      alt={selectedScan.user.display_name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <User className="w-8 h-8 text-muted-foreground m-4" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg">{selectedScan.user.display_name}</h3>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Clock className="w-3.5 h-3.5" />
+                    {selectedScan.time}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-muted/50 p-4 rounded-lg border space-y-3">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">Membership Status</span>
+                  <Badge variant={selectedScan.status === "granted" ? "default" : "destructive"}>
+                    {selectedScan.status === "granted" ? "Granted" : "Denied"}
+                  </Badge>
+                </div>
+                {selectedScan.reason && (
+                  <div className="flex justify-between items-start text-sm">
+                    <span className="text-muted-foreground whitespace-nowrap mr-4">Reason</span>
+                    <span className="text-right font-medium text-red-600">{selectedScan.reason}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">Plan</span>
+                  <span className="font-medium">{selectedScan.user.membership?.level_name || "None"}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">Expiry</span>
+                  <span className="font-medium">{formatDate(selectedScan.user.membership?.expiry_date)}</span>
+                </div>
+              </div>
+
+              <Button
+                className="w-full"
+                variant={selectedScan.status === "denied" ? "default" : "outline"}
+                onClick={() => {
+                  setViewScanDialogOpen(false);
+                  setEditUserTarget(selectedScan.user);
+                  setEditDialogOpen(true);
+                }}
+              >
+                <Edit className="w-4 h-4 mr-2" />
+                Assign / Change Plan
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <EditMemberDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        user={editUserTarget}
+        onSuccess={() => {
+          // Re-evaluate live panel if it matches the edited user
+          if (scannedUser && editUserTarget && scannedUser.id === editUserTarget.id) {
+            const updatedUser = useUsersStore.getState().users.find((u) => u.id === scannedUser.id);
+            if (updatedUser) {
+              setScannedUser(updatedUser);
+              const { isGranted, reason } = evaluateAccess(updatedUser);
+              setAccessDenied(!isGranted);
+              setAccessReason(reason);
+            }
+          }
+        }}
+      />
     </div>
   );
 }

@@ -264,6 +264,12 @@ export function ViewMemberDialog({
                 </label>
                 <div className="text-sm">{formatDate(user.registered)}</div>
               </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-muted-foreground">
+                  Member ID
+                </label>
+                <div className="text-sm font-mono">{user.id}</div>
+              </div>
             </div>
           </div>
 

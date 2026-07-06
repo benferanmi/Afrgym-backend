@@ -611,9 +611,11 @@ export const useUsersStore = create<UsersState>((set, get) => ({
     const filtered = users.filter((user) => {
       const matchesSearch =
         !search ||
+        user.id.toString().includes(search.toLowerCase()) ||
         user.display_name.toLowerCase().includes(search.toLowerCase()) ||
         user.email.toLowerCase().includes(search.toLowerCase()) ||
         user.username.toLowerCase().includes(search.toLowerCase()) ||
+        user.phone?.toLowerCase().includes(search.toLowerCase()) ||
         user.qr_code.unique_id?.toLowerCase().includes(search.toLowerCase());
 
       const matchesFilter =
@@ -832,9 +834,11 @@ export const useUsersStore = create<UsersState>((set, get) => ({
     const filtered = users.filter((user) => {
       const matchesSearch =
         !searchTerm ||
+        user.id.toString().includes(searchTerm.toLowerCase()) ||
         user.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
         user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         user.qr_code.unique_id
           ?.toLowerCase()
           .includes(searchTerm.toLowerCase());

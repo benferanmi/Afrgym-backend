@@ -44,6 +44,7 @@ interface CheckinCacheState {
   syncCache: () => Promise<void>;
   lookupByPin: (pin: string) => Promise<GymUser | null>;
   lookupByQrId: (qrId: string) => Promise<GymUser | null>;
+  lookupById: (userId: number) => Promise<GymUser | null>;
   clearCache: () => void;
   enrollFingerprint: (userId: number, zkPin: string, deviceSerial: string) => Promise<any>;
   deleteFingerprint: (userId: number, deviceSerial?: string) => Promise<any>;
@@ -152,6 +153,53 @@ const loadInitialState = (): CheckinCacheData => {
   };
 };
 
+const liveUserValidation = async (cachedUser: GymUser, set: any, get: any): Promise<GymUser | null> => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3000); // 3-second timeout
+
+  try {
+    const liveUser = await apiCall(`/users/${cachedUser.id}`, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    // Patch the fresh record back into the cache
+    const { users } = get();
+    const updatedUsers = users.map((u: GymUser) => (u.id === liveUser.id ? liveUser : u));
+    set({ users: updatedUsers });
+
+    // Update localStorage
+    const cachedDataStr = localStorage.getItem(STORAGE_KEY);
+    if (cachedDataStr) {
+      try {
+        const cacheData = JSON.parse(cachedDataStr);
+        cacheData.users = updatedUsers;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(cacheData));
+      } catch (e) {
+        console.warn("Failed to parse local storage for patching", e);
+      }
+    }
+
+    // Synchronize to useUsersStore
+    useUsersStore.setState((state) => ({
+      users: state.users.map((u) => (u.id === liveUser.id ? liveUser : u)),
+      selectedUser: state.selectedUser?.id === liveUser.id ? liveUser : state.selectedUser,
+    }));
+
+    return liveUser;
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+
+    // Confirmed 404
+    if (error?.status === 404) {
+      console.warn(`User ID ${cachedUser.id} not found on server (404). Treating as denied.`);
+      return null; // Do not fallback to cached data, user is deleted/not found
+    }
+
+    // Network error or timeout (fail-open)
+    console.warn(`Live validation failed for user ${cachedUser.id}, falling back to cache:`, error);
+    return cachedUser;
+  }
+};
+
 const initialData = loadInitialState();
 
 export const useCheckinCacheStore = create<CheckinCacheState>((set, get) => ({
@@ -225,7 +273,7 @@ export const useCheckinCacheStore = create<CheckinCacheState>((set, get) => ({
       // Find matching user in cached users list
       const cachedUser = users.find(u => u.id === enrollment.user_id);
       if (cachedUser) {
-        return cachedUser;
+        return await liveUserValidation(cachedUser, set, get);
       }
       // Stale cache: enrollment exists but user is not in cached users list,
       // fallback to live single lookup!
@@ -266,7 +314,7 @@ export const useCheckinCacheStore = create<CheckinCacheState>((set, get) => ({
     );
 
     if (cachedUser) {
-      return cachedUser;
+      return await liveUserValidation(cachedUser, set, get);
     }
 
     // 2. Fallback to live lookup
@@ -280,6 +328,25 @@ export const useCheckinCacheStore = create<CheckinCacheState>((set, get) => ({
       console.warn("Live QR lookup failed:", e);
     }
     return null;
+  },
+
+  lookupById: async (userId: number) => {
+    const { users } = get();
+    // 1. Local cache first — fetch live status before returning
+    const cachedUser = users.find((u) => u.id === userId);
+    if (cachedUser) {
+      return await liveUserValidation(cachedUser, set, get);
+    }
+
+    // 2. Fallback: live single-user fetch (covers members not yet in the
+    //    gym-one cache, e.g. a Gym Two member).
+    try {
+      const user = await apiCall(`/users/${userId}`);
+      return user || null;
+    } catch (e) {
+      console.warn("Live user-ID lookup failed:", e);
+      return null;
+    }
   },
 
   clearCache: () => {
@@ -365,7 +432,7 @@ export const useCheckinCacheStore = create<CheckinCacheState>((set, get) => ({
   }
 }));
 
-// Start background sync interval (every 3 minutes)
+// Start background sync interval (every 5 minutes)
 if (typeof window !== "undefined") {
   // Sync immediately on initial load to ensure fresh cache
   setTimeout(() => {

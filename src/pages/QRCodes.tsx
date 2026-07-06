@@ -38,6 +38,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
 import { Separator } from "@/components/ui/separator";
 import { EditMemberDialog } from "@/components/members/EditMemberDialog";
 import { IDCardGenerator } from "@/components/members/IDCardGenerator";
+import { useCheckinCacheStore } from "@/stores/checkinCacheStore";
 
 const BASE_URL = "https://afrgym.com.ng/wp-json/gym-admin/v1";
 
@@ -69,6 +70,12 @@ export default function QRCodes() {
   const [idCardDialogOpen, setIdCardDialogOpen] = useState(false);
   const [idCardUser, setIdCardUser] = useState<GymUser | null>(null);
 
+  // Fast Local-First ID Lookup States
+  const [idLookupTerm, setIdLookupTerm] = useState("");
+  const [idLookupResult, setIdLookupResult] = useState<GymUser | null>(null);
+  const [idLookupLoading, setIdLookupLoading] = useState(false);
+  const [idLookupError, setIdLookupError] = useState("");
+
   // Load initial data - fetch gym-specific users for the list
   useEffect(() => {
     fetchUsers(); // Gym-specific users only
@@ -85,6 +92,27 @@ export default function QRCodes() {
         user.qr_code.unique_id.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
+  const { lookupById } = useCheckinCacheStore();
+
+  const handleIdLookup = async () => {
+    if (!idLookupTerm) return;
+    setIdLookupLoading(true);
+    setIdLookupError("");
+    setIdLookupResult(null);
+    try {
+      const user = await lookupById(parseInt(idLookupTerm, 10));
+      if (user) {
+        setIdLookupResult(user);
+      } else {
+        setIdLookupError(`No member found with ID ${idLookupTerm}`);
+      }
+    } catch (e) {
+      setIdLookupError("Lookup failed. Please try again.");
+    } finally {
+      setIdLookupLoading(false);
+    }
+  };
+
   // QR lookup works cross-gym (doesn't auto-check-in)
   const handleQRCodeLookup = async (qrCodeValue) => {
     if (!qrCodeValue.trim()) return;
@@ -94,13 +122,47 @@ export default function QRCodes() {
     setLookupResult(null);
 
     try {
-      // This lookup works across ALL gyms via backend
-      const result = await lookupUserByQRCode(qrCodeValue.trim());
-      setLookupResult(result);
+      // Check local cache first, fallback to cross-gym backend
+      const cachedUser = await useCheckinCacheStore.getState().lookupByQrId(qrCodeValue.trim());
+      
+      if (cachedUser) {
+        let mappedVisitStatus = null;
+        
+        if (cachedUser.membership?.is_visit_based) {
+          // Note: Assumes the admin device's local timezone matches the WP site's configured timezone
+          const now = new Date();
+          const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+          
+          const visitLog = cachedUser.membership?.visit_info?.visit_log || [];
+          const alreadyCheckedIn = visitLog.includes(today);
+          const canCheckIn = cachedUser.membership?.is_active && 
+                             (cachedUser.membership?.visit_info?.remaining_visits > 0) && 
+                             !alreadyCheckedIn;
+                             
+          mappedVisitStatus = {
+            can_check_in: canCheckIn,
+            already_checked_in_today: alreadyCheckedIn
+          };
+        } else {
+          mappedVisitStatus = {
+            is_visit_based: false,
+            can_check_in: false,
+            message: "User has time-based membership"
+          };
+        }
 
-      console.log(lookupResult);
+        const result = {
+          success: true,
+          user_found: true,
+          user: cachedUser,
+          lookup_method: "cache_or_cross_gym",
+          has_active_membership: cachedUser.membership?.is_active || false,
+          visit_status: mappedVisitStatus
+        };
 
-      if (!result.user_found) {
+        setLookupResult(result);
+        console.log("QR Lookup Result:", result);
+      } else {
         setLookupError(
           "No user found with this QR code, username, email, or phone number."
         );
@@ -360,6 +422,103 @@ export default function QRCodes() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Quick Member ID Lookup */}
+      <Card className="shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg font-semibold flex items-center gap-2">
+            <User className="w-5 h-5 text-primary" />
+            Quick Member ID Lookup
+          </CardTitle>
+          <div className="flex items-center gap-2 mt-2">
+            <div className="relative flex-1">
+              <Input
+                placeholder="Quick lookup by Member ID..."
+                value={idLookupTerm}
+                onChange={(e) => setIdLookupTerm(e.target.value.replace(/[^0-9]/g, ""))}
+                onKeyUp={(e) => e.key === "Enter" && handleIdLookup()}
+                className="font-mono text-sm"
+                inputMode="numeric"
+              />
+            </div>
+            <Button
+              onClick={handleIdLookup}
+              disabled={!idLookupTerm || idLookupLoading}
+              size="sm"
+              className="shrink-0"
+            >
+              {idLookupLoading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Looking up...
+                </>
+              ) : (
+                "Look Up"
+              )}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {idLookupError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{idLookupError}</AlertDescription>
+            </Alert>
+          )}
+
+          {idLookupResult && (
+            <div className="p-4 border rounded-lg bg-card text-card-foreground shadow-sm">
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0">
+                  <div className="w-12 h-12 rounded-full overflow-hidden bg-primary/10 flex items-center justify-center font-bold">
+                    {idLookupResult.profile_picture_url || idLookupResult.avatar_url ? (
+                      <img
+                        src={idLookupResult.profile_picture_url || idLookupResult.avatar_url}
+                        alt={idLookupResult.display_name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      idLookupResult.first_name?.[0] || ""
+                    )}
+                  </div>
+                </div>
+                <div className="flex-grow min-w-0 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="font-semibold text-base truncate">{idLookupResult.display_name}</h4>
+                    <Badge variant="outline" className="font-mono text-xs">
+                      ID: {idLookupResult.id}
+                    </Badge>
+                    <Badge
+                      className={
+                        getMembershipStatusColor(idLookupResult) === "green"
+                          ? "bg-green-100 text-green-800 hover:bg-green-100"
+                          : getMembershipStatusColor(idLookupResult) === "orange"
+                          ? "bg-orange-100 text-orange-800 hover:bg-orange-100"
+                          : getMembershipStatusColor(idLookupResult) === "red"
+                          ? "bg-red-100 text-red-800 hover:bg-red-100"
+                          : "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"
+                      }
+                    >
+                      {getMembershipStatusDisplay(idLookupResult)}
+                    </Badge>
+                  </div>
+                  <div className="text-xs text-muted-foreground truncate">
+                    {idLookupResult.email} {idLookupResult.phone && `• ${idLookupResult.phone}`}
+                  </div>
+                  {idLookupResult.membership?.level_name && (
+                    <div className="text-xs text-muted-foreground">
+                      Plan: <span className="font-medium text-foreground">{idLookupResult.membership.level_name}</span>
+                      {idLookupResult.membership.expiry_date && (
+                        <span> (Expires: {formatDate(idLookupResult.membership.expiry_date)})</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Enhanced User Lookup Result - Shows ANY user from cross-gym lookup */}
       {lookupResult && (

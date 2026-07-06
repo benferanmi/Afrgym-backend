@@ -18,6 +18,7 @@ import {
   Box,
   Download,
   CreditCard,
+  Fingerprint,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,6 +69,7 @@ import { EditMemberDialog } from "@/components/members/EditMemberDialog";
 import { AddMemberDialog } from "@/components/members/AddMemberDialog";
 import { ViewMemberDialog } from "@/components/members/ViewMemberDialog";
 import { IDCardGenerator } from "@/components/members/IDCardGenerator";
+import { FingerprintEnrollDialog } from "@/components/members/FingerprintEnrollDialog";
 
 const BASE_URL = "https://afrgym.com.ng/wp-json/gym-admin/v1";
 
@@ -139,6 +141,9 @@ export default function Members() {
 
   // State for add dialog
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+
+  // State for fingerprint enrollment dialog
+  const [fingerprintDialogOpen, setFingerprintDialogOpen] = useState(false);
 
   // State for view dialog
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
@@ -445,6 +450,13 @@ export default function Members() {
             Add Member
           </Button>
           <Button
+            variant="outline"
+            onClick={() => setFingerprintDialogOpen(true)}
+          >
+            <Fingerprint className="mr-2 h-4 w-4" />
+            Enroll Fingerprint
+          </Button>
+          <Button
             className="bg-primary text-white"
             onClick={handleExportCSV}
             disabled={exportLoading || loading}
@@ -576,6 +588,7 @@ export default function Members() {
             <TableHeader>
               <TableRow>
                 <TableHead>Member</TableHead>
+                <TableHead>ID</TableHead>
                 <TableHead>Membership</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>QR Code</TableHead>
@@ -608,6 +621,11 @@ export default function Members() {
                         </div>
                       </div>
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="font-mono">
+                      {user.id}
+                    </Badge>
                   </TableCell>
                   <TableCell>
                     <div>
@@ -1030,6 +1048,12 @@ export default function Members() {
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         onSuccess={handleAddSuccess}
+      />
+
+      {/* Fingerprint Enrollment Dialog */}
+      <FingerprintEnrollDialog
+        open={fingerprintDialogOpen}
+        onOpenChange={setFingerprintDialogOpen}
       />
       {idCardUser && (
         <IDCardGenerator
