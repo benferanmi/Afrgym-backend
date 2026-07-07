@@ -40,7 +40,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCheckinCacheStore, FingerprintEnrollment } from "@/stores/checkinCacheStore";
-import {
 import { GymUser, getMembershipStatusColor, getMembershipStatusDisplay } from "@/stores/usersStore";
 import { GYM_IDENTIFIER } from "@/stores/checkinCacheStore";
 
@@ -160,7 +159,7 @@ export function FingerprintEnrollDialog({
     setIsLoadingStatus(true);
     setIsLoadingEnrollment(true);
     setEnrollError("");
-    
+
     try {
       // 1. Get device status
       const statusData = await apiCall(`/fingerprint/status?gym_identifier=${gym}`);
@@ -199,13 +198,13 @@ export function FingerprintEnrollDialog({
     setIsConnected(false);
     setDeviceSerial("");
     setIsManualSerial(false);
-    
+
     await loadGymAndEnrollmentData(GYM_IDENTIFIER, member.id);
   };
 
   const handleEnroll = async () => {
     if (!selectedMember) return;
-    
+
     if (!deviceSerial && !isManualSerial) {
       setEnrollError("Device Serial is required. Connect a device or enter serial manually.");
       return;
@@ -213,7 +212,7 @@ export function FingerprintEnrollDialog({
 
     setIsSubmitting(true);
     setEnrollError("");
-    
+
     try {
       const result = await apiCall("/fingerprint/enroll", {
         method: "POST",
@@ -227,7 +226,7 @@ export function FingerprintEnrollDialog({
 
       const otherGymLabel = result?.other_gym_identifier === "afrgym_two" ? "Gym Two" : "Gym One";
       const zkPin = String(selectedMember.id);
-      
+
       switch (result?.link_status) {
         case "created":
         case "reactivated":
@@ -335,10 +334,10 @@ export function FingerprintEnrollDialog({
                             getMembershipStatusColor(selectedMember) === "green"
                               ? "bg-green-100 text-green-800"
                               : getMembershipStatusColor(selectedMember) === "orange"
-                              ? "bg-orange-100 text-orange-800"
-                              : getMembershipStatusColor(selectedMember) === "red"
-                              ? "bg-red-100 text-red-800"
-                              : "bg-yellow-100 text-yellow-800"
+                                ? "bg-orange-100 text-orange-800"
+                                : getMembershipStatusColor(selectedMember) === "red"
+                                  ? "bg-red-100 text-red-800"
+                                  : "bg-yellow-100 text-yellow-800"
                           }
                         >
                           {getMembershipStatusDisplay(selectedMember)}
@@ -416,10 +415,10 @@ export function FingerprintEnrollDialog({
                                   getMembershipStatusColor(user) === "green"
                                     ? "bg-green-100 text-green-800 text-[10px] px-1.5 py-0"
                                     : getMembershipStatusColor(user) === "orange"
-                                    ? "bg-orange-100 text-orange-800 text-[10px] px-1.5 py-0"
-                                    : getMembershipStatusColor(user) === "red"
-                                    ? "bg-red-100 text-red-800 text-[10px] px-1.5 py-0"
-                                    : "bg-yellow-100 text-yellow-800 text-[10px] px-1.5 py-0"
+                                      ? "bg-orange-100 text-orange-800 text-[10px] px-1.5 py-0"
+                                      : getMembershipStatusColor(user) === "red"
+                                        ? "bg-red-100 text-red-800 text-[10px] px-1.5 py-0"
+                                        : "bg-yellow-100 text-yellow-800 text-[10px] px-1.5 py-0"
                                 }
                               >
                                 {getMembershipStatusDisplay(user)}
@@ -461,65 +460,65 @@ export function FingerprintEnrollDialog({
                 <div className="space-y-2 border-t pt-4 animate-fade-in">
                   <Label className="text-sm font-semibold">Step 3: Scanner Context</Label>
                   <div className="bg-muted/10 p-4 rounded-lg border border-muted/20 space-y-4">
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="font-medium text-xs">Scanner Device:</span>
-                        {isLoadingStatus ? (
-                          <span className="flex items-center gap-1 text-muted-foreground text-xs">
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            Checking status...
-                          </span>
-                        ) : isConnected ? (
-                          <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-[10px]">
-                            Connected ({deviceSerial})
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary" className="text-[10px]">
-                            Disconnected {deviceSerial ? `(${deviceSerial})` : ""}
-                          </Badge>
-                        )}
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="deviceSerial" className="text-[11px] text-muted-foreground">Device Serial Number</Label>
-                          {!isConnected && (
-                            <div className="flex items-center gap-1.5">
-                              <Switch
-                                id="manual-serial-toggle"
-                                checked={isManualSerial}
-                                onCheckedChange={setIsManualSerial}
-                              />
-                              <Label htmlFor="manual-serial-toggle" className="text-[10px] text-muted-foreground cursor-pointer">
-                                Enter Manually
-                              </Label>
-                            </div>
-                          )}
-                        </div>
-
-                        {isConnected ? (
-                          <div className="h-9 px-3 py-1 bg-green-50/50 text-green-800 border border-green-200/50 rounded-md flex items-center justify-between text-xs font-mono">
-                            <span>Device Serial: {deviceSerial || "Unknown"}</span>
-                            <span className="text-[10px] text-green-600 font-sans">✓ auto-detected</span>
-                          </div>
-                        ) : isManualSerial ? (
-                          <Input
-                            id="deviceSerial"
-                            value={deviceSerial}
-                            onChange={(e) => setDeviceSerial(e.target.value)}
-                            placeholder="e.g. SN1234567890"
-                            className="h-9 font-mono text-xs"
-                          />
-                        ) : (
-                          <Input
-                            id="deviceSerial"
-                            value={deviceSerial}
-                            disabled
-                            placeholder="No device connected (offline)"
-                            className="h-9 font-mono text-xs bg-muted cursor-not-allowed"
-                          />
-                        )}
-                      </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="font-medium text-xs">Scanner Device:</span>
+                      {isLoadingStatus ? (
+                        <span className="flex items-center gap-1 text-muted-foreground text-xs">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Checking status...
+                        </span>
+                      ) : isConnected ? (
+                        <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-[10px]">
+                          Connected ({deviceSerial})
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-[10px]">
+                          Disconnected {deviceSerial ? `(${deviceSerial})` : ""}
+                        </Badge>
+                      )}
                     </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="deviceSerial" className="text-[11px] text-muted-foreground">Device Serial Number</Label>
+                        {!isConnected && (
+                          <div className="flex items-center gap-1.5">
+                            <Switch
+                              id="manual-serial-toggle"
+                              checked={isManualSerial}
+                              onCheckedChange={setIsManualSerial}
+                            />
+                            <Label htmlFor="manual-serial-toggle" className="text-[10px] text-muted-foreground cursor-pointer">
+                              Enter Manually
+                            </Label>
+                          </div>
+                        )}
+                      </div>
+
+                      {isConnected ? (
+                        <div className="h-9 px-3 py-1 bg-green-50/50 text-green-800 border border-green-200/50 rounded-md flex items-center justify-between text-xs font-mono">
+                          <span>Device Serial: {deviceSerial || "Unknown"}</span>
+                          <span className="text-[10px] text-green-600 font-sans">✓ auto-detected</span>
+                        </div>
+                      ) : isManualSerial ? (
+                        <Input
+                          id="deviceSerial"
+                          value={deviceSerial}
+                          onChange={(e) => setDeviceSerial(e.target.value)}
+                          placeholder="e.g. SN1234567890"
+                          className="h-9 font-mono text-xs"
+                        />
+                      ) : (
+                        <Input
+                          id="deviceSerial"
+                          value={deviceSerial}
+                          disabled
+                          placeholder="No device connected (offline)"
+                          className="h-9 font-mono text-xs bg-muted cursor-not-allowed"
+                        />
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Step 4: Already enrolled warning block */}
