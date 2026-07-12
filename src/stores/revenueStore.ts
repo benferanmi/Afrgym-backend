@@ -18,6 +18,7 @@ export interface RevenueTransaction {
 }
 
 export interface RevenueLevelBreakdown {
+  level_id?: number;
   membership_name: string;
   transaction_count: number;
   total_revenue: number;

@@ -33,6 +33,46 @@ import {
 const BASE_URL = "https://afrgym.com.ng/wp-json/gym-admin/v1";
 const GYM_IDENTIFIER = "afrgym_one";
 const GYM_NAME = "Afrgym One";
+const BRIDGE_WS_URL = "ws://192.168.0.181:8765";
+
+interface WsMemberScannedMessage {
+  event: "member_scanned";
+  gym_identifier: string;
+  device_serial: string;
+  pin: string;
+  scanned_at: string;
+  user: GymUser;
+}
+
+interface WsUnknownMemberMessage {
+  event: "unknown_member";
+  gym_identifier: string;
+  device_serial: string;
+  pin: string;
+  scanned_at: string;
+}
+
+interface WsDeviceStatusMessage {
+  event: "device_status";
+  connected: boolean;
+  device_serial: string;
+  gym_identifier: string;
+  sync_code?: string;
+  last_sync_time?: string;
+  sync_alert?: boolean;
+}
+
+interface WsCorrectionMessage {
+  event: "correction";
+  user_id: number;
+  user: GymUser;
+}
+
+type WsMessage =
+  | WsMemberScannedMessage
+  | WsUnknownMemberMessage
+  | WsDeviceStatusMessage
+  | WsCorrectionMessage;
 
 interface StatusResponse {
   success: boolean;
@@ -58,16 +98,29 @@ export default function ScanMode() {
     isConnected: boolean;
     serial: string;
     lastSeen: string | null;
+    syncCode?: string;
+    lastSyncTime?: string;
+    syncAlert?: boolean;
   } | null>(null);
 
   const [scannedUser, setScannedUser] = useState<GymUser | null>(null);
+  const scannedUserRef = useRef<GymUser | null>(null);
+  useEffect(() => {
+    scannedUserRef.current = scannedUser;
+  }, [scannedUser]);
+
   const [accessDenied, setAccessDenied] = useState(false);
   const [accessReason, setAccessReason] = useState("");
   const [isCheckingIn, setIsCheckingIn] = useState(false);
-  
+
+  const [wsConnected, setWsConnected] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+  const wsReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wsReconnectDelayRef = useRef(1000); // backs off up to 10s
+
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editUserTarget, setEditUserTarget] = useState<GymUser | null>(null);
-  
+
   const [viewScanDialogOpen, setViewScanDialogOpen] = useState(false);
   const [selectedScan, setSelectedScan] = useState<{
     user: GymUser;
@@ -81,6 +134,7 @@ export default function ScanMode() {
     time: string;
     status: "granted" | "denied";
     reason?: string;
+    isCorrected?: boolean;
   }>>([]);
 
   const lastScanRef = useRef<{
@@ -90,9 +144,84 @@ export default function ScanMode() {
 
   const effectiveIsActive = isActive && !editDialogOpen && !viewScanDialogOpen;
 
-  // Poll fingerprint status
   useEffect(() => {
     if (!effectiveIsActive) return;
+
+    let cancelled = false;
+
+    const connect = () => {
+      if (cancelled) return;
+      const socket = new WebSocket(BRIDGE_WS_URL);
+      wsRef.current = socket;
+
+      socket.onopen = () => {
+        wsReconnectDelayRef.current = 1000;
+        setWsConnected(true);
+      };
+
+      socket.onmessage = (event) => {
+        let msg: WsMessage;
+        try {
+          msg = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+
+        switch (msg.event) {
+          case "member_scanned":
+            // eslint-disable-next-line no-use-before-define
+            applyScannedUser(msg.user);
+            break;
+          case "unknown_member":
+            // eslint-disable-next-line no-use-before-define
+            applyUnknownPin(msg.pin);
+            break;
+          case "device_status":
+            setDeviceStatus({
+              isConnected: msg.connected,
+              serial: msg.device_serial,
+              lastSeen: new Date().toISOString(),
+              syncCode: msg.sync_code,
+              lastSyncTime: msg.last_sync_time,
+              syncAlert: msg.sync_alert,
+            });
+            break;
+          case "correction":
+            // eslint-disable-next-line no-use-before-define
+            handleCorrection(msg.user_id, msg.user);
+            break;
+        }
+      };
+
+      socket.onclose = () => {
+        setWsConnected(false);
+        wsRef.current = null;
+        if (cancelled) return;
+        // Exponential backoff, capped at 10s
+        wsReconnectTimerRef.current = setTimeout(() => {
+          wsReconnectDelayRef.current = Math.min(wsReconnectDelayRef.current * 2, 10000);
+          connect();
+        }, wsReconnectDelayRef.current);
+      };
+
+      socket.onerror = () => {
+        socket.close();
+      };
+    };
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      if (wsReconnectTimerRef.current) clearTimeout(wsReconnectTimerRef.current);
+      wsRef.current?.close();
+      wsRef.current = null;
+    };
+  }, [effectiveIsActive]);
+
+  // Poll fingerprint status
+  useEffect(() => {
+    if (!effectiveIsActive || wsConnected) return;
 
     const fetchStatus = async () => {
       try {
@@ -159,7 +288,7 @@ export default function ScanMode() {
     const interval = setInterval(fetchStatus, 3000);
 
     return () => clearInterval(interval);
-  }, [effectiveIsActive]);
+  }, [effectiveIsActive, wsConnected]);
 
   const evaluateAccess = (user: GymUser) => {
     const membership = user.membership;
@@ -182,39 +311,69 @@ export default function ScanMode() {
       isGranted = false;
       reason = "No remaining visits in this membership cycle";
     }
-    
+
     return { isGranted, reason };
+  };
+
+  const applyScannedUser = (user: GymUser) => {
+    const scanTime = new Date().toLocaleTimeString();
+    setScannedUser(user);
+
+    const { isGranted, reason } = evaluateAccess(user);
+    setAccessDenied(!isGranted);
+    setAccessReason(reason);
+
+    setRecentScans((prev) => [
+      {
+        user,
+        time: scanTime,
+        status: isGranted ? "granted" : "denied",
+        reason: reason || undefined,
+      },
+      ...prev.slice(0, 4),
+    ]);
+  };
+
+  const applyUnknownPin = (pin: string) => {
+    setScannedUser(null);
+    setAccessDenied(true);
+    setAccessReason(`Unknown PIN: ${pin}`);
+  };
+
+  const handleCorrection = (userId: number, correctedUser: GymUser) => {
+    if (scannedUserRef.current?.id === userId) {
+      setScannedUser(correctedUser);
+      const { isGranted, reason } = evaluateAccess(correctedUser);
+      setAccessDenied(!isGranted);
+      setAccessReason(reason);
+    }
+    
+    setRecentScans((prev) => {
+      const index = prev.findIndex((s) => s.user.id === userId);
+      if (index !== -1) {
+        const newScans = [...prev];
+        const { isGranted, reason } = evaluateAccess(correctedUser);
+        newScans[index] = {
+          ...newScans[index],
+          user: correctedUser,
+          status: isGranted ? "granted" : "denied",
+          reason: reason || undefined,
+          isCorrected: true,
+        };
+        return newScans;
+      }
+      return prev;
+    });
   };
 
   const handleFingerprintScan = async (pin: string) => {
     try {
       const user = await lookupByPin(pin);
-      const scanTime = new Date().toLocaleTimeString();
-
       if (!user) {
-        setScannedUser(null);
-        setAccessDenied(true);
-        setAccessReason(`Unknown PIN: ${pin}`);
+        applyUnknownPin(pin);
         return;
       }
-
-      setScannedUser(user);
-
-      const { isGranted, reason } = evaluateAccess(user);
-
-      setAccessDenied(!isGranted);
-      setAccessReason(reason);
-
-      // Prepend to recent scans
-      setRecentScans((prev) => [
-        {
-          user,
-          time: scanTime,
-          status: isGranted ? "granted" : "denied",
-          reason: reason || undefined,
-        },
-        ...prev.slice(0, 4), // Keep last 5 scans
-      ]);
+      applyScannedUser(user);
     } catch (err: any) {
       console.error(err);
       setAccessDenied(true);
@@ -229,6 +388,19 @@ export default function ScanMode() {
       month: "short",
       day: "numeric",
     });
+  };
+
+  const formatTimeAgo = (isoString?: string) => {
+    if (!isoString) return "unknown";
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return "unknown";
+    const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
   };
 
   const handleCheckinUser = async () => {
@@ -332,17 +504,22 @@ export default function ScanMode() {
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
                 <span className="text-sm font-medium">Scanner Connection</span>
-                {deviceStatus?.isConnected ? (
-                  <Badge className="bg-green-500 text-white hover:bg-green-600 flex items-center gap-1.5 animate-pulse">
-                    <Wifi className="w-3.5 h-3.5" />
-                    Live
-                  </Badge>
-                ) : (
-                  <Badge variant="secondary" className="flex items-center gap-1.5">
-                    <WifiOff className="w-3.5 h-3.5" />
-                    Offline
-                  </Badge>
-                )}
+                <div className="flex flex-col items-end gap-1">
+                  {deviceStatus?.isConnected ? (
+                    <Badge className="bg-green-500 text-white hover:bg-green-600 flex items-center gap-1.5 animate-pulse">
+                      <Wifi className="w-3.5 h-3.5" />
+                      Live
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary" className="flex items-center gap-1.5">
+                      <WifiOff className="w-3.5 h-3.5" />
+                      Offline
+                    </Badge>
+                  )}
+                  <span className="text-[10px] text-muted-foreground font-medium">
+                    {wsConnected ? "Live via local bridge" : "Via WordPress (fallback)"}
+                  </span>
+                </div>
               </div>
 
               {deviceStatus && (
@@ -354,6 +531,22 @@ export default function ScanMode() {
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Last Ping:</span>
                     <span>{deviceStatus.lastSeen ? new Date(deviceStatus.lastSeen).toLocaleTimeString() : "N/A"}</span>
+                  </div>
+                </div>
+              )}
+
+              {deviceStatus?.syncCode && (
+                <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                  <span className="text-sm font-medium">Bridge Sync</span>
+                  <div className="flex flex-col items-end gap-1">
+                    <Badge variant={deviceStatus.syncAlert ? "destructive" : "secondary"}>
+                      {deviceStatus.syncCode}
+                    </Badge>
+                    {deviceStatus.lastSyncTime && (
+                      <span className="text-[10px] text-muted-foreground font-medium">
+                        Last sync: {formatTimeAgo(deviceStatus.lastSyncTime)}
+                      </span>
+                    )}
                   </div>
                 </div>
               )}
@@ -393,12 +586,19 @@ export default function ScanMode() {
                           {scan.time}
                         </span>
                       </div>
-                      <Badge
-                        variant={scan.status === "granted" ? "default" : "destructive"}
-                        className={scan.status === "granted" ? "bg-green-100 text-green-800 hover:bg-green-100 border-green-200" : ""}
-                      >
-                        {scan.status === "granted" ? "Granted" : "Denied"}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        {scan.isCorrected && (
+                          <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100 border-yellow-200">
+                            Corrected
+                          </Badge>
+                        )}
+                        <Badge
+                          variant={scan.status === "granted" ? "default" : "destructive"}
+                          className={scan.status === "granted" ? "bg-green-100 text-green-800 hover:bg-green-100 border-green-200" : ""}
+                        >
+                          {scan.status === "granted" ? "Granted" : "Denied"}
+                        </Badge>
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -535,8 +735,8 @@ export default function ScanMode() {
                   {/* Access Status Card */}
                   <div
                     className={`p-4 rounded-xl border-2 flex items-start gap-3 transition-colors ${accessDenied
-                        ? "bg-red-100/40 border-red-300 text-red-900"
-                        : "bg-green-100/40 border-green-300 text-green-900"
+                      ? "bg-red-100/40 border-red-300 text-red-900"
+                      : "bg-green-100/40 border-green-300 text-green-900"
                       }`}
                   >
                     {accessDenied ? (

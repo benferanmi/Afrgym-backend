@@ -48,11 +48,11 @@ const REPORT_MODES: {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
 }[] = [
-  { value: "daily", label: "Daily", icon: Sun },
-  { value: "weekly", label: "Weekly", icon: CalendarDays },
-  { value: "monthly", label: "Monthly", icon: BarChart2 },
-  { value: "range", label: "Custom Range", icon: CalendarRange },
-];
+    { value: "daily", label: "Daily", icon: Sun },
+    { value: "weekly", label: "Weekly", icon: CalendarDays },
+    { value: "monthly", label: "Monthly", icon: BarChart2 },
+    { value: "range", label: "Custom Range", icon: CalendarRange },
+  ];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -157,7 +157,7 @@ export default function Revenue() {
               id="daily-date"
               type="date"
               value={selectedDate}
-              max={(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })()}
+              max={(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })()}
               onChange={(e) => setSelectedDate(e.target.value)}
             />
           </div>
@@ -176,7 +176,7 @@ export default function Revenue() {
               id="weekly-date"
               type="date"
               value={selectedWeekDate}
-              max={(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })()}
+              max={(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })()}
               onChange={(e) => setSelectedWeekDate(e.target.value)}
             />
             {selectedWeekDate && (
@@ -225,7 +225,7 @@ export default function Revenue() {
                 id="start-date"
                 type="date"
                 value={selectedStartDate}
-               max={selectedEndDate || (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })()}
+                max={selectedEndDate || (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })()}
                 onChange={(e) => setDateRange(e.target.value, selectedEndDate)}
               />
             </div>
@@ -241,7 +241,7 @@ export default function Revenue() {
                 type="date"
                 value={selectedEndDate}
                 min={selectedStartDate}
-                max={(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })()}
+                max={(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })()}
                 onChange={(e) =>
                   setDateRange(selectedStartDate, e.target.value)
                 }
@@ -338,11 +338,10 @@ export default function Revenue() {
                     key={value}
                     onClick={() => setReportMode(value)}
                     className={`inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium border transition-colors
-                    ${
-                      active
+                    ${active
                         ? "bg-primary text-primary-foreground border-primary"
                         : "bg-background text-muted-foreground border-border hover:bg-muted hover:text-foreground"
-                    }`}
+                      }`}
                   >
                     <Icon className="h-4 w-4" />
                     {label}
@@ -443,9 +442,9 @@ export default function Revenue() {
             </CardHeader>
             <CardContent>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {levelBreakdown.map((level) => (
+                {levelBreakdown.map((level, index) => (
                   <div
-                    key={level.membership_name}
+                    key={`${level.level_id ?? "unknown"}-${level.membership_name}-${index}`}
                     className="border rounded-lg p-4 space-y-2 hover:bg-muted/40 transition-colors"
                   >
                     <div className="flex items-center justify-between">
