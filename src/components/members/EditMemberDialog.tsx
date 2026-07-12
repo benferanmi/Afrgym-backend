@@ -75,6 +75,13 @@ const membershipPlans = {
       isVisitBased: false,
     },
     {
+      id: "14",
+      name: "Bi weekly with a trainer",
+      description: "Bi-weekly plan with personal trainer",
+      defaultDays: 14,
+      isVisitBased: false,
+    },
+    {
       id: "12",
       name: "3x a week / Month (With Trainer)",
       description: "Visit-based: 12 visits per month with trainer",
@@ -94,6 +101,20 @@ const membershipPlans = {
       name: "3 Months (With a Trainer)",
       description: "3 Month plan with personal trainer",
       defaultDays: 90,
+      isVisitBased: false,
+    },
+    {
+      id: "15",
+      name: "6 Months (With a Trainer)",
+      description: "6-month plan with personal trainer",
+      defaultDays: 180,
+      isVisitBased: false,
+    },
+    {
+      id: "16",
+      name: "1 year (With a Trainer)",
+      description: "Yearly plan with personal trainer",
+      defaultDays: 365,
       isVisitBased: false,
     },
   ],
@@ -156,12 +177,114 @@ const membershipPlans = {
       isVisitBased: false,
     },
   ],
+  studentWithTrainer: [
+    {
+      id: "25",
+      name: "Student Daily - With a trainer",
+      description: "Daily access with personal trainer (student rate)",
+      defaultDays: 1,
+      isVisitBased: false,
+    },
+    {
+      id: "26",
+      name: "Student Weekly - with a trainer",
+      description: "Weekly plan with personal trainer (student rate)",
+      defaultDays: 6,
+      isVisitBased: false,
+    },
+    {
+      id: "27",
+      name: "Student 3x/week Monthly - with a trainer",
+      description: "Visit-based: 12 visits per month with trainer (student rate)",
+      defaultDays: 30,
+      isVisitBased: true,
+      monthlyVisits: 12,
+    },
+    {
+      id: "28",
+      name: "Student Monthly - With a Trainer",
+      description: "Monthly plan with personal trainer (student rate)",
+      defaultDays: 30,
+      isVisitBased: false,
+    },
+    {
+      id: "29",
+      name: "Student 3 Month - With a Trainer",
+      description: "3 Month plan with personal trainer (student rate)",
+      defaultDays: 90,
+      isVisitBased: false,
+    },
+  ],
+  studentWithoutTrainer: [
+    {
+      id: "17",
+      name: "Student Daily - Without a trainer",
+      description: "Daily gym access (student rate)",
+      defaultDays: 1,
+      isVisitBased: false,
+    },
+    {
+      id: "18",
+      name: "Student Weekly - Without a trainer",
+      description: "Weekly gym access (student rate)",
+      defaultDays: 6,
+      isVisitBased: false,
+    },
+    {
+      id: "19",
+      name: "Student Biweekly - without a trainer",
+      description: "Bi-weekly gym access (student rate)",
+      defaultDays: 12,
+      isVisitBased: false,
+    },
+    {
+      id: "20",
+      name: "Student 3x/week (Monthly) - Without a trainer",
+      description: "Visit-based: 12 visits per month (student rate)",
+      defaultDays: 30,
+      isVisitBased: true,
+      monthlyVisits: 12,
+    },
+    {
+      id: "22",
+      name: "Student 1 Month - Without a trainer",
+      description: "Monthly gym access (student rate)",
+      defaultDays: 30,
+      isVisitBased: false,
+    },
+    {
+      id: "21",
+      name: "Student 3 Month - Without a trainer",
+      description: "3 Month gym access (student rate)",
+      defaultDays: 90,
+      isVisitBased: false,
+    },
+    {
+      id: "23",
+      name: "Student 6 Month - Without a trainer",
+      description: "6-month gym access (student rate)",
+      defaultDays: 180,
+      isVisitBased: false,
+    },
+    {
+      id: "24",
+      name: "Student 1 Year - Without a trainer",
+      description: "Yearly gym access (student rate)",
+      defaultDays: 365,
+      isVisitBased: false,
+    },
+  ],
 };
 
 const allPlans = [
   ...membershipPlans.withTrainer,
   ...membershipPlans.withoutTrainer,
+  ...membershipPlans.studentWithTrainer,
+  ...membershipPlans.studentWithoutTrainer,
 ];
+
+export default membershipPlans;
+export { allPlans };
 
 export function EditMemberDialog({
   user,
@@ -495,7 +618,7 @@ export function EditMemberDialog({
       }
 
       // Membership data - only include if changed from initial values
-      const membershipChanged = 
+      const membershipChanged =
         formData.level_id !== initialMembershipData.level_id ||
         formData.start_date !== initialMembershipData.start_date ||
         formData.end_date !== initialMembershipData.end_date;
@@ -1028,8 +1151,8 @@ export function EditMemberDialog({
                 {selectedPlan && (
                   <div
                     className={`p-3 border rounded-md ${selectedPlan.isVisitBased
-                        ? "bg-blue-50 border-blue-200"
-                        : "bg-blue-50 border-blue-200"
+                      ? "bg-blue-50 border-blue-200"
+                      : "bg-blue-50 border-blue-200"
                       }`}
                   >
                     <div className="flex items-center gap-2 mb-2">
@@ -1249,7 +1372,7 @@ export function EditMemberDialog({
                         </div>
                       )}
                     </div>
-                    
+
                     {isConnected ? (
                       <div className="h-9 px-3 py-1 bg-green-50 text-green-800 border border-green-200 rounded-md flex items-center justify-between text-xs font-mono">
                         <span>Device Serial: {deviceSerial || "Unknown"}</span>

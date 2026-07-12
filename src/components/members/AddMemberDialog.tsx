@@ -58,6 +58,13 @@ const membershipPlans = {
       isVisitBased: false,
     },
     {
+      id: "14",
+      name: "Bi weekly with a trainer",
+      description: "Bi-weekly plan with personal trainer",
+      defaultDays: 14,
+      isVisitBased: false,
+    },
+    {
       id: "12",
       name: "3x a week / Month (With Trainer)",
       description: "Visit-based: 12 visits per month with trainer",
@@ -77,6 +84,20 @@ const membershipPlans = {
       name: "3 Months (With a Trainer)",
       description: "3 Month plan with personal trainer",
       defaultDays: 90,
+      isVisitBased: false,
+    },
+    {
+      id: "15",
+      name: "6 Months (With a Trainer)",
+      description: "6-month plan with personal trainer",
+      defaultDays: 180,
+      isVisitBased: false,
+    },
+    {
+      id: "16",
+      name: "1 year (With a Trainer)",
+      description: "Yearly plan with personal trainer",
+      defaultDays: 365,
       isVisitBased: false,
     },
   ],
@@ -135,6 +156,103 @@ const membershipPlans = {
       id: "7",
       name: "1 Year",
       description: "Yearly gym access",
+      defaultDays: 365,
+      isVisitBased: false,
+    },
+  ],
+  studentWithTrainer: [
+    {
+      id: "25",
+      name: "Student Daily - With a trainer",
+      description: "Daily access with personal trainer (student rate)",
+      defaultDays: 1,
+      isVisitBased: false,
+    },
+    {
+      id: "26",
+      name: "Student Weekly - with a trainer",
+      description: "Weekly plan with personal trainer (student rate)",
+      defaultDays: 6,
+      isVisitBased: false,
+    },
+    {
+      id: "27",
+      name: "Student 3x/week Monthly - with a trainer",
+      description: "Visit-based: 12 visits per month with trainer (student rate)",
+      defaultDays: 30,
+      isVisitBased: true,
+      monthlyVisits: 12,
+    },
+    {
+      id: "28",
+      name: "Student Monthly - With a Trainer",
+      description: "Monthly plan with personal trainer (student rate)",
+      defaultDays: 30,
+      isVisitBased: false,
+    },
+    {
+      id: "29",
+      name: "Student 3 Month - With a Trainer",
+      description: "3 Month plan with personal trainer (student rate)",
+      defaultDays: 90,
+      isVisitBased: false,
+    },
+  ],
+  studentWithoutTrainer: [
+    {
+      id: "17",
+      name: "Student Daily - Without a trainer",
+      description: "Daily gym access (student rate)",
+      defaultDays: 1,
+      isVisitBased: false,
+    },
+    {
+      id: "18",
+      name: "Student Weekly - Without a trainer",
+      description: "Weekly gym access (student rate)",
+      defaultDays: 6,
+      isVisitBased: false,
+    },
+    {
+      id: "19",
+      name: "Student Biweekly - without a trainer",
+      description: "Bi-weekly gym access (student rate)",
+      defaultDays: 12,
+      isVisitBased: false,
+    },
+    {
+      id: "20",
+      name: "Student 3x/week (Monthly) - Without a trainer",
+      description: "Visit-based: 12 visits per month (student rate)",
+      defaultDays: 30,
+      isVisitBased: true,
+      monthlyVisits: 12,
+    },
+    {
+      id: "22",
+      name: "Student 1 Month - Without a trainer",
+      description: "Monthly gym access (student rate)",
+      defaultDays: 30,
+      isVisitBased: false,
+    },
+    {
+      id: "21",
+      name: "Student 3 Month - Without a trainer",
+      description: "3 Month gym access (student rate)",
+      defaultDays: 90,
+      isVisitBased: false,
+    },
+    {
+      id: "23",
+      name: "Student 6 Month - Without a trainer",
+      description: "6-month gym access (student rate)",
+      defaultDays: 180,
+      isVisitBased: false,
+    },
+    {
+      id: "24",
+      name: "Student 1 Year - Without a trainer",
+      description: "Yearly gym access (student rate)",
       defaultDays: 365,
       isVisitBased: false,
     },
@@ -392,377 +510,377 @@ export function AddMemberDialog({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Profile Picture Upload */}
-            <div className="space-y-4 border-b pb-4">
-              <h4 className="font-medium">Profile Picture (Optional)</h4>
+          {/* Profile Picture Upload */}
+          <div className="space-y-4 border-b pb-4">
+            <h4 className="font-medium">Profile Picture (Optional)</h4>
 
-              <div className="flex flex-col items-center space-y-4">
-                {/* Image Preview */}
-                <div className="relative">
-                  {imagePreview || formData.profile_picture_url ? (
-                    <div className="relative">
-                      <img
-                        src={imagePreview || formData.profile_picture_url}
-                        alt="Profile preview"
-                        className="w-24 h-24 rounded-full object-cover border-2 border-gray-200"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleRemoveImage}
-                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="w-24 h-24 rounded-full bg-gray-100 border-2 border-gray-200 flex items-center justify-center">
-                      <User className="h-8 w-8 text-gray-400" />
-                    </div>
-                  )}
-                </div>
-
-                {/* File Input */}
-                <div className="flex flex-col items-center space-y-2">
-                  <Label htmlFor="profile_picture" className="cursor-pointer">
-                    <div className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
-                      <Upload className="h-4 w-4" />
-                      <span>Choose Image</span>
-                    </div>
-                  </Label>
-                  <Input
-                    id="profile_picture"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageSelect}
-                    className="hidden"
-                  />
-                  <p className="text-xs text-muted-foreground text-center">
-                    Max file size: 5MB. Supported: JPG, PNG, GIF
-                  </p>
-                </div>
-
-                {/* Upload Button */}
-                {selectedFile && !formData.profile_picture_url && (
-                  <Button
-                    type="button"
-                    onClick={handleImageUpload}
-                    disabled={isUploadingImage}
-                    size="sm"
-                    className="w-full max-w-[200px]"
-                  >
-                    {isUploadingImage ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Uploading...
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="mr-2 h-4 w-4" />
-                        Upload Image
-                      </>
-                    )}
-                  </Button>
-                )}
-
-                {/* Upload Status */}
-                {formData.profile_picture_url && (
-                  <p className="text-sm text-green-600 flex items-center">
-                    <span className="mr-1">✓</span>
-                    Image uploaded successfully
-                  </p>
-                )}
-
-                {/* Upload Error */}
-                {imageUploadError && (
-                  <p className="text-sm text-destructive text-center">
-                    {imageUploadError}
-                  </p>
-                )}
-
-                {/* Form Error for Image */}
-                {formErrors.image && (
-                  <p className="text-sm text-destructive text-center">
-                    {formErrors.image}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Basic Information */}
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email *</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => handleChange("email", e.target.value)}
-                  placeholder="Enter email address"
-                />
-                {formErrors.email && (
-                  <p className="text-sm text-destructive">{formErrors.email}</p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="username">Username *</Label>
-                  <Input
-                    id="username"
-                    value={formData.username}
-                    onChange={(e) => handleChange("username", e.target.value)}
-                    placeholder="Enter username"
-                  />
-                  {formErrors.username && (
-                    <p className="text-sm text-destructive">
-                      {formErrors.username}
-                    </p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number *</Label>
-                  <Input
-                    id="phone"
-                    value={formData.phone}
-                    onChange={(e) => handleChange("phone", e.target.value)}
-                    placeholder="8100110011"
-                  />
-                  {formErrors.phone && (
-                    <p className="text-sm text-destructive">{formErrors.phone}</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="first_name">First Name *</Label>
-                  <Input
-                    id="first_name"
-                    value={formData.first_name}
-                    onChange={(e) => handleChange("first_name", e.target.value)}
-                    placeholder="Enter first name"
-                  />
-                  {formErrors.first_name && (
-                    <p className="text-sm text-destructive">
-                      {formErrors.first_name}
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="last_name">Last Name *</Label>
-                  <Input
-                    id="last_name"
-                    value={formData.last_name}
-                    onChange={(e) => handleChange("last_name", e.target.value)}
-                    placeholder="Enter last name"
-                  />
-                  {formErrors.last_name && (
-                    <p className="text-sm text-destructive">
-                      {formErrors.last_name}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Membership Information */}
-            <div className="space-y-4 border-t pt-4">
-              <h4 className="font-medium">Membership Information (Optional)</h4>
-
-              <div className="space-y-2">
-                <Label htmlFor="membership_level">Membership Plan</Label>
-                <Select
-                  value={formData.level_id?.toString() || "none"}
-                  onValueChange={handleMembershipChange}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select membership plan (optional)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No Membership</SelectItem>
-
-                    {/* Plans with Trainer */}
-                    <div className="px-2 py-1 text-sm font-medium text-muted-foreground bg-muted/50">
-                      Plans with Trainer
-                    </div>
-                    {membershipPlans.withTrainer.map((plan) => (
-                      <SelectItem key={plan.id} value={plan.id}>
-                        <div className="flex flex-col">
-                          <div className="flex items-center gap-2">
-                            <span>{plan.name}</span>
-                            {plan.isVisitBased && (
-                              <Badge
-                                variant="outline"
-                                className="text-xs bg-blue-100 text-blue-800"
-                              >
-                                Visit-Based
-                              </Badge>
-                            )}
-                          </div>
-                          <span className="text-xs text-muted-foreground">
-                            {plan.isVisitBased
-                              ? `${plan.monthlyVisits} visits/month`
-                              : `${plan.defaultDays} days`}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
-
-                    {/* Plans without Trainer */}
-                    <div className="px-2 py-1 text-sm font-medium text-muted-foreground bg-muted/50">
-                      Plans without Trainer
-                    </div>
-                    {membershipPlans.withoutTrainer.map((plan) => (
-                      <SelectItem key={plan.id} value={plan.id}>
-                        <div className="flex flex-col">
-                          <div className="flex items-center gap-2">
-                            <span>{plan.name}</span>
-                            {plan.isVisitBased && (
-                              <Badge
-                                variant="outline"
-                                className="text-xs bg-blue-100 text-blue-800"
-                              >
-                                Visit-Based
-                              </Badge>
-                            )}
-                          </div>
-                          <span className="text-xs text-muted-foreground">
-                            {plan.isVisitBased
-                              ? `${plan.monthlyVisits} visits/month`
-                              : `${plan.defaultDays} days`}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {formData.level_id && (
-                <>
-                  {selectedPlan && (
-                    <div
-                      className={`p-3 border rounded-md ${selectedPlan.isVisitBased
-                          ? "bg-blue-50 border-blue-200"
-                          : "bg-blue-50 border-blue-200"
-                        }`}
+            <div className="flex flex-col items-center space-y-4">
+              {/* Image Preview */}
+              <div className="relative">
+                {imagePreview || formData.profile_picture_url ? (
+                  <div className="relative">
+                    <img
+                      src={imagePreview || formData.profile_picture_url}
+                      alt="Profile preview"
+                      className="w-24 h-24 rounded-full object-cover border-2 border-gray-200"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleRemoveImage}
+                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
                     >
-                      <div className="flex items-center gap-2 mb-2">
-                        <p className="text-sm font-medium">
-                          Selected Plan: {selectedPlan.name}
-                        </p>
-                        {selectedPlan.isVisitBased && (
-                          <Badge className="bg-blue-100 text-blue-800">
-                            Visit-Based
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {selectedPlan.isVisitBased
-                          ? `Visit-based plan with ${selectedPlan.monthlyVisits} visits per billing cycle. Visits will reset monthly based on the start date.`
-                          : `Time-based plan with ${selectedPlan.defaultDays} days duration. You can modify the end date below if needed.`}
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="start_date">Start Date</Label>
-                      <Input
-                        id="start_date"
-                        type="date"
-                        value={formData.start_date}
-                        disabled
-                        className="bg-muted text-muted-foreground cursor-not-allowed"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Membership starts from today
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="end_date">End Date *</Label>
-                      <Input
-                        id="end_date"
-                        type="date"
-                        value={formData.end_date}
-                        onChange={(e) => handleChange("end_date", e.target.value)}
-                        min={formData.start_date}
-                      />
-                      {formErrors.end_date && (
-                        <p className="text-sm text-destructive">
-                          {formErrors.end_date}
-                        </p>
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        {selectedPlan?.isVisitBased
-                          ? "For visit-based plans, this sets the billing cycle duration."
-                          : "Auto-calculated based on plan. You can modify if needed."}
-                      </p>
-                    </div>
+                      <X className="h-3 w-3" />
+                    </button>
                   </div>
-
-                  {/* Additional Info for Visit-Based Plans */}
-                  {selectedPlan?.isVisitBased && (
-                    <div className="bg-amber-50 p-3 rounded-md border border-amber-200">
-                      <div className="flex items-center gap-2 mb-2">
-                        <TrendingUp className="h-4 w-4 text-amber-600" />
-                        <p className="text-sm font-medium text-amber-800">
-                          Visit-Based Plan Information
-                        </p>
-                      </div>
-                      <div className="text-xs text-amber-700 space-y-1">
-                        <p>
-                          • This plan includes {selectedPlan.monthlyVisits} visits
-                          per billing cycle
-                        </p>
-                        <p>
-                          • Visits will reset automatically based on the start
-                          date
-                        </p>
-                        <p>• Unused visits do not carry over to the next cycle</p>
-                        <p>• Members can only check in once per day</p>
-                        <p>
-                          • Visit tracking begins immediately upon member creation
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="text-sm text-muted-foreground">
-                    A QR code will be automatically generated for this member when
-                    a membership is assigned.
+                ) : (
+                  <div className="w-24 h-24 rounded-full bg-gray-100 border-2 border-gray-200 flex items-center justify-center">
+                    <User className="h-8 w-8 text-gray-400" />
                   </div>
-                </>
+                )}
+              </div>
+
+              {/* File Input */}
+              <div className="flex flex-col items-center space-y-2">
+                <Label htmlFor="profile_picture" className="cursor-pointer">
+                  <div className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
+                    <Upload className="h-4 w-4" />
+                    <span>Choose Image</span>
+                  </div>
+                </Label>
+                <Input
+                  id="profile_picture"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageSelect}
+                  className="hidden"
+                />
+                <p className="text-xs text-muted-foreground text-center">
+                  Max file size: 5MB. Supported: JPG, PNG, GIF
+                </p>
+              </div>
+
+              {/* Upload Button */}
+              {selectedFile && !formData.profile_picture_url && (
+                <Button
+                  type="button"
+                  onClick={handleImageUpload}
+                  disabled={isUploadingImage}
+                  size="sm"
+                  className="w-full max-w-[200px]"
+                >
+                  {isUploadingImage ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="mr-2 h-4 w-4" />
+                      Upload Image
+                    </>
+                  )}
+                </Button>
+              )}
+
+              {/* Upload Status */}
+              {formData.profile_picture_url && (
+                <p className="text-sm text-green-600 flex items-center">
+                  <span className="mr-1">✓</span>
+                  Image uploaded successfully
+                </p>
+              )}
+
+              {/* Upload Error */}
+              {imageUploadError && (
+                <p className="text-sm text-destructive text-center">
+                  {imageUploadError}
+                </p>
+              )}
+
+              {/* Form Error for Image */}
+              {formErrors.image && (
+                <p className="text-sm text-destructive text-center">
+                  {formErrors.image}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Basic Information */}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email *</Label>
+              <Input
+                id="email"
+                type="email"
+                value={formData.email}
+                onChange={(e) => handleChange("email", e.target.value)}
+                placeholder="Enter email address"
+              />
+              {formErrors.email && (
+                <p className="text-sm text-destructive">{formErrors.email}</p>
               )}
             </div>
 
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => handleDialogChange(false)}
-                disabled={isSubmitting || isUploadingImage}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={isSubmitting || isUploadingImage || !canSubmit}
-                className="gradient-gym text-white"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Adding Member...
-                  </>
-                ) : (
-                  "Add Member"
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="username">Username *</Label>
+                <Input
+                  id="username"
+                  value={formData.username}
+                  onChange={(e) => handleChange("username", e.target.value)}
+                  placeholder="Enter username"
+                />
+                {formErrors.username && (
+                  <p className="text-sm text-destructive">
+                    {formErrors.username}
+                  </p>
                 )}
-              </Button>
-            </DialogFooter>
-          </form>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone Number *</Label>
+                <Input
+                  id="phone"
+                  value={formData.phone}
+                  onChange={(e) => handleChange("phone", e.target.value)}
+                  placeholder="8100110011"
+                />
+                {formErrors.phone && (
+                  <p className="text-sm text-destructive">{formErrors.phone}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="first_name">First Name *</Label>
+                <Input
+                  id="first_name"
+                  value={formData.first_name}
+                  onChange={(e) => handleChange("first_name", e.target.value)}
+                  placeholder="Enter first name"
+                />
+                {formErrors.first_name && (
+                  <p className="text-sm text-destructive">
+                    {formErrors.first_name}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="last_name">Last Name *</Label>
+                <Input
+                  id="last_name"
+                  value={formData.last_name}
+                  onChange={(e) => handleChange("last_name", e.target.value)}
+                  placeholder="Enter last name"
+                />
+                {formErrors.last_name && (
+                  <p className="text-sm text-destructive">
+                    {formErrors.last_name}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Membership Information */}
+          <div className="space-y-4 border-t pt-4">
+            <h4 className="font-medium">Membership Information (Optional)</h4>
+
+            <div className="space-y-2">
+              <Label htmlFor="membership_level">Membership Plan</Label>
+              <Select
+                value={formData.level_id?.toString() || "none"}
+                onValueChange={handleMembershipChange}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select membership plan (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No Membership</SelectItem>
+
+                  {/* Plans with Trainer */}
+                  <div className="px-2 py-1 text-sm font-medium text-muted-foreground bg-muted/50">
+                    Plans with Trainer
+                  </div>
+                  {membershipPlans.withTrainer.map((plan) => (
+                    <SelectItem key={plan.id} value={plan.id}>
+                      <div className="flex flex-col">
+                        <div className="flex items-center gap-2">
+                          <span>{plan.name}</span>
+                          {plan.isVisitBased && (
+                            <Badge
+                              variant="outline"
+                              className="text-xs bg-blue-100 text-blue-800"
+                            >
+                              Visit-Based
+                            </Badge>
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {plan.isVisitBased
+                            ? `${plan.monthlyVisits} visits/month`
+                            : `${plan.defaultDays} days`}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+
+                  {/* Plans without Trainer */}
+                  <div className="px-2 py-1 text-sm font-medium text-muted-foreground bg-muted/50">
+                    Plans without Trainer
+                  </div>
+                  {membershipPlans.withoutTrainer.map((plan) => (
+                    <SelectItem key={plan.id} value={plan.id}>
+                      <div className="flex flex-col">
+                        <div className="flex items-center gap-2">
+                          <span>{plan.name}</span>
+                          {plan.isVisitBased && (
+                            <Badge
+                              variant="outline"
+                              className="text-xs bg-blue-100 text-blue-800"
+                            >
+                              Visit-Based
+                            </Badge>
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {plan.isVisitBased
+                            ? `${plan.monthlyVisits} visits/month`
+                            : `${plan.defaultDays} days`}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {formData.level_id && (
+              <>
+                {selectedPlan && (
+                  <div
+                    className={`p-3 border rounded-md ${selectedPlan.isVisitBased
+                      ? "bg-blue-50 border-blue-200"
+                      : "bg-blue-50 border-blue-200"
+                      }`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <p className="text-sm font-medium">
+                        Selected Plan: {selectedPlan.name}
+                      </p>
+                      {selectedPlan.isVisitBased && (
+                        <Badge className="bg-blue-100 text-blue-800">
+                          Visit-Based
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {selectedPlan.isVisitBased
+                        ? `Visit-based plan with ${selectedPlan.monthlyVisits} visits per billing cycle. Visits will reset monthly based on the start date.`
+                        : `Time-based plan with ${selectedPlan.defaultDays} days duration. You can modify the end date below if needed.`}
+                    </p>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="start_date">Start Date</Label>
+                    <Input
+                      id="start_date"
+                      type="date"
+                      value={formData.start_date}
+                      disabled
+                      className="bg-muted text-muted-foreground cursor-not-allowed"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Membership starts from today
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="end_date">End Date *</Label>
+                    <Input
+                      id="end_date"
+                      type="date"
+                      value={formData.end_date}
+                      onChange={(e) => handleChange("end_date", e.target.value)}
+                      min={formData.start_date}
+                    />
+                    {formErrors.end_date && (
+                      <p className="text-sm text-destructive">
+                        {formErrors.end_date}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      {selectedPlan?.isVisitBased
+                        ? "For visit-based plans, this sets the billing cycle duration."
+                        : "Auto-calculated based on plan. You can modify if needed."}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Additional Info for Visit-Based Plans */}
+                {selectedPlan?.isVisitBased && (
+                  <div className="bg-amber-50 p-3 rounded-md border border-amber-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <TrendingUp className="h-4 w-4 text-amber-600" />
+                      <p className="text-sm font-medium text-amber-800">
+                        Visit-Based Plan Information
+                      </p>
+                    </div>
+                    <div className="text-xs text-amber-700 space-y-1">
+                      <p>
+                        • This plan includes {selectedPlan.monthlyVisits} visits
+                        per billing cycle
+                      </p>
+                      <p>
+                        • Visits will reset automatically based on the start
+                        date
+                      </p>
+                      <p>• Unused visits do not carry over to the next cycle</p>
+                      <p>• Members can only check in once per day</p>
+                      <p>
+                        • Visit tracking begins immediately upon member creation
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="text-sm text-muted-foreground">
+                  A QR code will be automatically generated for this member when
+                  a membership is assigned.
+                </div>
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleDialogChange(false)}
+              disabled={isSubmitting || isUploadingImage}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={isSubmitting || isUploadingImage || !canSubmit}
+              className="gradient-gym text-white"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Adding Member...
+                </>
+              ) : (
+                "Add Member"
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );
