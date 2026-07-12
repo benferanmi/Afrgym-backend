@@ -1142,6 +1142,60 @@ export function EditMemberDialog({
                       </div>
                     </SelectItem>
                   ))}
+
+                  {/* Student Plans with Trainer */}
+                  <div className="px-2 py-1 text-sm font-medium text-muted-foreground bg-muted/50">
+                    Student Plans with Trainer
+                  </div>
+                  {membershipPlans.studentWithTrainer.map((plan) => (
+                    <SelectItem key={plan.id} value={plan.id}>
+                      <div className="flex flex-col">
+                        <div className="flex items-center gap-2">
+                          <span>{plan.name}</span>
+                          {plan.isVisitBased && (
+                            <Badge
+                              variant="outline"
+                              className="text-xs bg-blue-100 text-blue-800"
+                            >
+                              Visit-Based
+                            </Badge>
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {plan.isVisitBased
+                            ? `${plan.monthlyVisits} visits/month`
+                            : `${plan.defaultDays} days`}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+
+                  {/* Student Plans without Trainer */}
+                  <div className="px-2 py-1 text-sm font-medium text-muted-foreground bg-muted/50">
+                    Student Plans without Trainer
+                  </div>
+                  {membershipPlans.studentWithoutTrainer.map((plan) => (
+                    <SelectItem key={plan.id} value={plan.id}>
+                      <div className="flex flex-col">
+                        <div className="flex items-center gap-2">
+                          <span>{plan.name}</span>
+                          {plan.isVisitBased && (
+                            <Badge
+                              variant="outline"
+                              className="text-xs bg-blue-100 text-blue-800"
+                            >
+                              Visit-Based
+                            </Badge>
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {plan.isVisitBased
+                            ? `${plan.monthlyVisits} visits/month`
+                            : `${plan.defaultDays} days`}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
