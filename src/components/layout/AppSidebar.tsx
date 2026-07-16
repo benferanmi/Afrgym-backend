@@ -57,6 +57,14 @@ export function AppSidebar() {
         icon: CreditCard,
       });
     }
+
+    if (!navigationItems.some((i) => i.url === "/attendance")) {
+      navigationItems.push({
+        title: "Attendance",
+        url: "/attendance",
+        icon: Users,
+      });
+    }
   }
 
   const isActive = (path: string) => {

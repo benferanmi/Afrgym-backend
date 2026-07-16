@@ -109,6 +109,13 @@ export interface GymUser {
         reason?: string;
       }>;
     };
+    // Expiration details
+    last_membership?: {
+      level_name: string;
+      expiry_date: string;
+      start_date: string;
+      days_since_expired: number;
+    } | null;
     // Visit-based membership fields
     is_visit_based?: boolean;
     visit_info?: {

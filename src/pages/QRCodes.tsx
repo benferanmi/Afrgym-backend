@@ -805,6 +805,12 @@ export default function QRCodes() {
                           {lookupResult.access_status.status_message}
                         </span>
                       </div>
+                      
+                      {!lookupResult.access_status.can_access && lookupResult.user.membership?.last_membership && (
+                        <div className="mt-2 text-sm bg-red-100/50 text-red-800 p-2 rounded-md border border-red-200">
+                          <strong>Previous Plan:</strong> {lookupResult.user.membership.last_membership.level_name} expired <strong>{lookupResult.user.membership.last_membership.days_since_expired} days ago</strong>.
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

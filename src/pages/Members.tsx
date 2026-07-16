@@ -687,9 +687,23 @@ export default function Members() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge className={getMembershipStatusBadge(user)}>
-                      {getMembershipStatusText(user)}
-                    </Badge>
+                    <div className="flex flex-col gap-1 items-start">
+                      <Badge className={getMembershipStatusBadge(user)}>
+                        {getMembershipStatusText(user)}
+                      </Badge>
+                      {(!user.membership.is_active || user.membership.status === "no_membership") && user.membership.last_membership && (
+                        <div 
+                          className={`text-[10px] px-1.5 py-0.5 rounded-sm font-medium ${
+                            user.membership.last_membership.days_since_expired > 30 
+                              ? "bg-red-100 text-red-800" 
+                              : "bg-orange-100 text-orange-800"
+                          }`}
+                          title={`Last plan: ${user.membership.last_membership.level_name}`}
+                        >
+                          Expired {user.membership.last_membership.days_since_expired} days ago
+                        </div>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div className="text-sm">

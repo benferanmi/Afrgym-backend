@@ -752,6 +752,11 @@ export default function ScanMode() {
                         <p className="text-sm mt-0.5 opacity-90">
                           {accessDenied ? accessReason : "Biometric credentials match and membership is fully active."}
                         </p>
+                        {accessDenied && scannedUser.membership?.last_membership && (
+                          <div className="mt-2 text-sm bg-red-50 text-red-800 p-2 rounded-md border border-red-200">
+                            <strong>Previous:</strong> {scannedUser.membership.last_membership.level_name} expired <strong>{scannedUser.membership.last_membership.days_since_expired} days ago</strong>.
+                          </div>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         {canCheckIn && (

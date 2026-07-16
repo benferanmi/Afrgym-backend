@@ -33,6 +33,7 @@ import {
   XCircle,
   Fingerprint,
   Loader2,
+  History,
 } from "lucide-react";
 import {
   GymUser,
@@ -326,6 +327,39 @@ export function ViewMemberDialog({
                   </div>
                 )}
               </div>
+
+              {(!user.membership.is_active || user.membership.status === "no_membership") && user.membership.last_membership && (
+                <div className="bg-muted/50 p-4 rounded-lg space-y-3 mt-4">
+                  <h5 className="font-medium text-sm flex items-center gap-2">
+                    <History className="h-4 w-4" />
+                    Previous Membership
+                  </h5>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Plan</div>
+                      <div className="text-sm font-medium">{user.membership.last_membership.level_name}</div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Expired</div>
+                      <div className={`text-sm font-medium ${user.membership.last_membership.days_since_expired > 30 ? 'text-red-600' : 'text-orange-600'}`}>
+                        {user.membership.last_membership.days_since_expired} days ago
+                      </div>
+                    </div>
+                    {user.membership.last_membership.start_date && (
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground">Start Date</div>
+                        <div className="text-sm">{formatDate(user.membership.last_membership.start_date)}</div>
+                      </div>
+                    )}
+                    {user.membership.last_membership.expiry_date && (
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground">End Date</div>
+                        <div className="text-sm">{formatDate(user.membership.last_membership.expiry_date)}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Visit-based membership details */}
               {isVisitBased(user) && visitInfo ? (
