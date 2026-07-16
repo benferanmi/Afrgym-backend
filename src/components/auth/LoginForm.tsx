@@ -153,6 +153,17 @@ export function LoginForm() {
               </Button>
             </form>
           </CardContent>
+          <div className="text-center pb-6 text-xs text-muted-foreground/60">
+            Website designed & developed by{" "}
+            <a
+              href="https://www.upwork.com/freelancers/~01700c62beb4fd95f1?mp_source=share"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-foreground transition-colors"
+            >
+              Opafunso Oluwaferanmi Benjamin
+            </a>
+          </div>
         </Card>
       </div>
     </div>
