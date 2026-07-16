@@ -3,7 +3,6 @@ import { format } from "date-fns";
 import { Download, Search, Users } from "lucide-react";
 import { useAttendanceStore } from "@/stores/attendanceStore";
 import { useAuthStore } from "@/stores/authStore";
-import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -45,11 +44,9 @@ export default function Attendance() {
 
   if (user?.role !== "super_admin") {
     return (
-      <MainLayout>
-        <div className="p-8 text-center text-muted-foreground">
-          You do not have permission to view this page.
-        </div>
-      </MainLayout>
+      <div className="p-8 text-center text-muted-foreground">
+        You do not have permission to view this page.
+      </div>
     );
   }
 
@@ -59,9 +56,8 @@ export default function Attendance() {
   );
 
   return (
-    <MainLayout>
-      <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row justify-between gap-4">
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex flex-col sm:flex-row justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Attendance</h1>
             <p className="text-muted-foreground">
@@ -210,6 +206,5 @@ export default function Attendance() {
           </CardContent>
         </Card>
       </div>
-    </MainLayout>
   );
 }
