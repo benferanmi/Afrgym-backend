@@ -46,10 +46,9 @@ export function AppSidebar() {
   const collapsed = state === "collapsed";
   const user = useAuthStore((state) => state.user);
   if (user?.role === "super_admin") {
+    const superAdminEmails = import.meta.env.VITE_SUPER_ADMIN_EMAILS?.split(",") || [];
     if (
-      (user?.email === "emmexafrgym@gmail.com" ||
-        user?.email === "emmex7401@gmail.com" ||
-        user?.email === "benferanmiopafunso@gmail.com") &&
+      superAdminEmails.includes(user?.email || "") &&
       !navigationItems.some((i) => i.url === "/revenue")
     ) {
       navigationItems.push({
