@@ -48,7 +48,8 @@ export function AppSidebar() {
   if (user?.role === "super_admin") {
     if (
       (user?.email === "emmexafrgym@gmail.com" ||
-        user?.email === "emmex7401@gmail.com") &&
+        user?.email === "emmex7401@gmail.com" ||
+        user?.email === "benferanmiopafunso@gmail.com") &&
       !navigationItems.some((i) => i.url === "/revenue")
     ) {
       navigationItems.push({
@@ -121,7 +122,7 @@ export function AppSidebar() {
                     className={cn(
                       "w-full justify-start gap-3 rounded-lg px-3 py-2 transition-all hover:bg-sidebar-accent group",
                       isActive(item.url) &&
-                        "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90",
+                      "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90",
                     )}
                   >
                     <NavLink to={item.url}>
